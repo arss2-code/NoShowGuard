@@ -227,7 +227,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ masterTgId, sl
                     )}
                   </div>
 
-                  {s.booking && (
+                  {(isBooked || isPending) && s.booking && (
                     <div className="text-xs text-gray-600 flex flex-wrap gap-x-3 gap-y-1 pt-0.5">
                       <span className="flex items-center gap-1 font-medium text-gray-800">
                         <User className="w-3 h-3 text-gray-400" />

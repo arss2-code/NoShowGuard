@@ -8,10 +8,12 @@ import { ServiceCard } from './components/ServiceCard';
 import { SuccessScreen } from './components/SuccessScreen';
 import { OfferModal } from './components/legal/OfferModal';
 import { MasterDashboard } from './components/master/MasterDashboard';
+import { isValidPhoneNumber } from './utils/phone';
 import {
   fetchMaster,
   fetchSlots,
-  initiateBooking
+  initiateBooking,
+  confirmBooking
 } from './api/client';
 import type {
   MasterInfo,
@@ -41,7 +43,7 @@ export default function App() {
   const [selectedSlot, setSelectedSlot] = useState<SlotInfo | null>(null);
 
   const [clientName, setClientName] = useState(user.fullName || 'Гость');
-  const [clientPhone, setClientPhone] = useState('+7 (9');
+  const [clientPhone, setClientPhone] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(true);
   const [isOfferOpen, setIsOfferOpen] = useState(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -132,8 +134,8 @@ export default function App() {
       return;
     }
 
-    if (!clientPhone || clientPhone.replace(/\D/g, '').length < 10) {
-      setErrorMessage('Пожалуйста, укажите корректный номер телефона (не менее 10 цифр).');
+    if (!isValidPhoneNumber(clientPhone)) {
+      setErrorMessage('Пожалуйста, укажите полный номер телефона в формате +7 (XXX) XXX-XX-XX.');
       triggerHaptic('error');
       return;
     }
@@ -157,6 +159,13 @@ export default function App() {
 
       if (result.confirmation_url) {
         openExternalLink(result.confirmation_url);
+      }
+
+      // Авто-подтверждение брони в тестовом режиме
+      try {
+        await confirmBooking(result.booking_id);
+      } catch (err) {
+        console.warn('Автоподтверждение не удалось:', err);
       }
 
       setSuccessBooking({

@@ -115,7 +115,8 @@ async def get_master_dashboard(
     slots_result = []
     for s in slots_db:
         booking_info = None
-        if s.booking:
+        # Отображаем данные брони ТОЛЬКО для занятых слотов или слотов в процессе оплаты
+        if s.booking and s.status in [SlotStatus.BOOKED, SlotStatus.PENDING, SlotStatus.COMPLETED]:
             booking_info = MasterBookingInfo(
                 id=s.booking.id,
                 client_name=s.booking.client_name,
@@ -302,17 +303,21 @@ async def checkout_subscription(
     """
     master = await get_master_or_404(tg_id, db)
 
-    price_map = {
-        "start": 490,
-        "pro": 890
+    SUBSCRIPTION_PRICES = {
+        ("start", "1m"): (490, 30, "1 мес."),
+        ("start", "3m"): (1250, 90, "3 мес."),
+        ("start", "1y"): (4100, 365, "1 год"),
+        ("pro", "1m"): (890, 30, "1 мес."),
+        ("pro", "3m"): (2270, 90, "3 мес."),
+        ("pro", "1y"): (7470, 365, "1 год"),
     }
-    amount = price_map.get(payload.tier, 490)
+    amount, days_to_add, label = SUBSCRIPTION_PRICES.get((payload.tier, payload.period), (490, 30, "1 мес."))
 
     # Формируем платеж
     payment_info = payment_service.create_sbp_payment(
         booking_id=999900 + master.id,
         deposit_amount=amount,
-        service_title=f"Подписка NoShowGuard ({payload.tier.upper()}) 1 мес",
+        service_title=f"Подписка NoShowGuard ({payload.tier.upper()}) на {label}",
         client_phone=f"+7900{master.id:06d}"
     )
 
@@ -337,22 +342,26 @@ async def checkout_subscription(
 async def simulate_subscription_success(
     tg_id: int,
     tier: str = Query("start", pattern=r"^(start|pro)$"),
+    period: str = Query("1m", pattern=r"^(1m|3m|1y)$"),
     db: AsyncSession = Depends(get_db)
 ):
-    """Тестовое мгновенное продление подписки на 30 дней (для проверки и демонстрации)."""
+    """Тестовое мгновенное продление подписки (на 1 мес, 3 мес или 1 год)."""
     master = await get_master_or_404(tg_id, db)
     now = utc_now()
+
+    days_map = {"1m": 30, "3m": 90, "1y": 365}
+    days_to_add = days_map.get(period, 30)
 
     current_until = master.subscription_active_until or now
     if current_until < now:
         current_until = now
 
     master.subscription_tier = tier
-    master.subscription_active_until = current_until + timedelta(days=30)
+    master.subscription_active_until = current_until + timedelta(days=days_to_add)
     await db.commit()
     await db.refresh(master)
 
     return {
-        "message": f"Подписка «{tier.upper()}» успешно активирована на 30 дней",
+        "message": f"Подписка «{tier.upper()}» успешно активирована на {days_to_add} дн.",
         "active_until": master.subscription_active_until
     }

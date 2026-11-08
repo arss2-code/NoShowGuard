@@ -168,6 +168,8 @@ export const MasterDashboard: React.FC<MasterDashboardProps> = ({ masterTgId }) 
           trialDaysLeft={data.trial_days_left}
           subscriptionTier={data.subscription_tier}
           subscriptionActive={data.subscription_active}
+          trialEndsAt={data.master.trial_ends_at}
+          subscriptionActiveUntil={data.master.subscription_active_until}
           onRefresh={loadData}
         />
       )}

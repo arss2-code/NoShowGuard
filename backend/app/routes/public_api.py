@@ -174,6 +174,31 @@ async def get_booking_status(
     )
 
 
+@router.post("/bookings/{booking_id}/confirm", response_model=BookingStatusResponse)
+async def confirm_booking_endpoint(
+    booking_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Подтверждение оплаты депозита клиентом (перевод слота в BOOKED)."""
+    from app.services.slot_service import confirm_booking_payment
+    try:
+        booking, slot, master = await confirm_booking_payment(db, booking_id, "mock_confirmed_payment")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return BookingStatusResponse(
+        booking_id=booking.id,
+        slot_id=booking.slot_id,
+        status=slot.status.value,
+        payment_status=booking.payment_status,
+        client_name=booking.client_name,
+        service_title=booking.service_title,
+        deposit_amount=booking.deposit_amount,
+        start_time=slot.start_time
+    )
+
+
+
 @router.get("/public/offer")
 async def get_legal_offer():
     """Публичная оферта и правила обеспечительного платежа (ст. 381.1 ГК РФ)."""

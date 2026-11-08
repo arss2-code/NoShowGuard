@@ -117,6 +117,7 @@ class SlotAddRequest(BaseModel):
 
 class SubscriptionCheckoutRequest(BaseModel):
     tier: str = Field("start", pattern=r"^(start|pro)$")
+    period: str = Field("1m", pattern=r"^(1m|3m|1y)$")
 
 
 class SubscriptionCheckoutResponse(BaseModel):

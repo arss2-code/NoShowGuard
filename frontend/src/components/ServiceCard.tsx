@@ -1,5 +1,6 @@
 import React from 'react';
 import { Phone, CheckCircle2, Scale } from 'lucide-react';
+import { formatPhoneNumber } from '../utils/phone';
 
 interface Props {
   serviceTitle: string;
@@ -95,7 +96,7 @@ export const ServiceCard: React.FC<Props> = ({
             <input
               type="tel"
               value={clientPhone}
-              onChange={(e) => onChangePhone(e.target.value)}
+              onChange={(e) => onChangePhone(formatPhoneNumber(e.target.value))}
               placeholder="+7 (999) 000-00-00"
               className="w-full pl-9 pr-3 py-2 text-sm bg-zinc-50 border border-zinc-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all text-zinc-900"
             />

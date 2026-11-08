@@ -132,6 +132,17 @@ export async function fetchBookingStatus(bookingId: number): Promise<BookingStat
   return res.json();
 }
 
+export async function confirmBooking(bookingId: number): Promise<BookingStatusResult> {
+  const res = await fetch(`${API_BASE}/api/bookings/${bookingId}/confirm`, {
+    method: 'POST'
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Не удалось подтвердить бронирование');
+  }
+  return res.json();
+}
+
 export async function fetchLegalOffer(): Promise<LegalOffer> {
   const res = await fetch(`${API_BASE}/api/public/offer`);
   if (!res.ok) {
@@ -191,18 +202,26 @@ export async function updateMasterSettings(
   if (!res.ok) throw new Error('Не удалось обновить настройки');
 }
 
-export async function checkoutSubscription(tgId: number | string, tier: 'start' | 'pro'): Promise<{ confirmation_url: string; amount: number }> {
+export async function checkoutSubscription(
+  tgId: number | string, 
+  tier: 'start' | 'pro',
+  period: '1m' | '3m' | '1y' = '1m'
+): Promise<{ confirmation_url: string; amount: number }> {
   const res = await fetch(`${API_BASE}/api/masters/${tgId}/subscription/checkout`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tier })
+    body: JSON.stringify({ tier, period })
   });
   if (!res.ok) throw new Error('Не удалось сформировать счет на оплату подписки');
   return res.json();
 }
 
-export async function simulateSubscriptionSuccess(tgId: number | string, tier: 'start' | 'pro'): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/masters/${tgId}/subscription/simulate-success?tier=${tier}`, {
+export async function simulateSubscriptionSuccess(
+  tgId: number | string, 
+  tier: 'start' | 'pro',
+  period: '1m' | '3m' | '1y' = '1m'
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/masters/${tgId}/subscription/simulate-success?tier=${tier}&period=${period}`, {
     method: 'POST'
   });
   if (!res.ok) throw new Error('Не удалось продлить тестовую подписку');
