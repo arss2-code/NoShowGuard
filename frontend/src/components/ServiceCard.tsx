@@ -1,5 +1,5 @@
 import React from 'react';
-import { Phone, CheckCircle2, Info } from 'lucide-react';
+import { Phone, CheckCircle2, Scale } from 'lucide-react';
 
 interface Props {
   serviceTitle: string;
@@ -9,6 +9,9 @@ interface Props {
   onChangePhone: (phone: string) => void;
   clientName: string;
   onChangeName: (name: string) => void;
+  termsAccepted: boolean;
+  onToggleTerms: (accepted: boolean) => void;
+  onOpenOffer: () => void;
 }
 
 export const ServiceCard: React.FC<Props> = ({
@@ -18,7 +21,10 @@ export const ServiceCard: React.FC<Props> = ({
   clientPhone,
   onChangePhone,
   clientName,
-  onChangeName
+  onChangeName,
+  termsAccepted,
+  onToggleTerms,
+  onOpenOffer
 }) => {
   const remainingPrice = Math.max(0, totalPrice - depositAmount);
 
@@ -82,7 +88,7 @@ export const ServiceCard: React.FC<Props> = ({
 
         <div>
           <label className="text-[11px] font-medium text-zinc-500 block mb-1">
-            Номер телефона (для SMS и связи)
+            Номер телефона (для связи и СБП)
           </label>
           <div className="relative">
             <Phone className="w-4 h-4 text-zinc-400 absolute left-3 top-2.5" />
@@ -97,13 +103,36 @@ export const ServiceCard: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* 3. Юридическая прозрачность */}
-      <div className="flex items-start gap-2 p-2.5 bg-blue-50/70 border border-blue-100 rounded-xl text-[11px] text-blue-900/80 leading-relaxed">
-        <Info className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
-        <span>
-          Депозит вносится как обеспечительный платеж (ст. 381.1 ГК РФ).
-          При посещении сеанса сумма 100% идет в счет оплаты. Бесплатная отмена за 12 часов.
-        </span>
+      {/* 3. Юридическое согласие с офертой ст. 381.1 ГК РФ */}
+      <div className="p-3.5 bg-white border border-zinc-200/80 rounded-2xl space-y-2 shadow-2xs">
+        <label className="flex items-start gap-2.5 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={termsAccepted}
+            onChange={(e) => onToggleTerms(e.target.checked)}
+            className="mt-0.5 w-4 h-4 rounded-md border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0 cursor-pointer"
+          />
+          <span className="text-xs text-gray-700 leading-snug">
+            Я согласен с{' '}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onOpenOffer();
+              }}
+              className="text-blue-600 font-semibold underline underline-offset-2 hover:text-blue-800 transition"
+            >
+              условиями бронирования
+            </button>{' '}
+            и обеспечительного платежа (ст. 381.1 ГК РФ).
+          </span>
+        </label>
+
+        <div className="flex items-center gap-1.5 text-[11px] text-zinc-500 pt-1 border-t border-zinc-100">
+          <Scale className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+          <span>Депозит засчитывается в чек при визите или компенсирует простой при неявке.</span>
+        </div>
       </div>
     </div>
   );

@@ -62,7 +62,8 @@ async def reserve_slot_for_payment(
     client_tg_id: int | None,
     service_title: str,
     service_price: int,
-    deposit_amount: int
+    deposit_amount: int,
+    terms_accepted: bool = True
 ) -> Booking:
     """
     Атомарно блокирует слот на время оплаты с защитой от состояния гонки (Race Condition).
@@ -112,7 +113,9 @@ async def reserve_slot_for_payment(
         service_title=service_title,
         service_price=service_price,
         deposit_amount=deposit_amount,
-        payment_status="pending"
+        payment_status="pending",
+        terms_accepted=terms_accepted,
+        terms_accepted_at=now
     )
     db.add(booking)
     await db.commit()

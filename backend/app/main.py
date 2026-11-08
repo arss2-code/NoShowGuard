@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.database import init_db
 from app.routes.public_api import router as public_router
+from app.routes.master_api import router as master_router
 from app.routes.webhooks import router as webhooks_router
 from app.bot.bot_instance import bot, dp, is_test_token
 from app.bot.handlers import router as master_bot_router
@@ -75,6 +76,7 @@ app.add_middleware(
 
 # Подключение маршрутов API
 app.include_router(public_router)
+app.include_router(master_router)
 app.include_router(webhooks_router)
 
 # Раздача статики собранного фронтенда TMA (если собрана)

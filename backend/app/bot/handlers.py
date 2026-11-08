@@ -2,7 +2,7 @@ from datetime import datetime, date, timedelta, time
 from aiogram import Router, F
 from aiogram.filters import CommandStart, Command
 from aiogram.types import Message, CallbackQuery
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func
 from sqlalchemy.orm import selectinload
 
 from app.database import AsyncSessionLocal
@@ -30,12 +30,17 @@ async def handle_start(message: Message):
         master = result.scalar_one_or_none()
 
         if not master:
+            now = utc_now()
             master = Master(
                 tg_id=tg_id,
                 full_name=full_name,
                 username=username,
                 profession="Мастер услуг",
-                deposit_amount=settings.DEFAULT_DEPOSIT_AMOUNT
+                deposit_amount=settings.DEFAULT_DEPOSIT_AMOUNT,
+                trial_ends_at=now + timedelta(days=7),
+                subscription_tier="trial",
+                digest_enabled=True,
+                digest_time="09:00"
             )
             db.add(master)
             await db.commit()
@@ -45,21 +50,22 @@ async def handle_start(message: Message):
 
     welcome_text = (
         f"👋 Здравствуйте, <b>{full_name}</b>!\n\n"
-        f"🛡 <b>NoShowGuard</b> защищает ваше расписание от неявок.\n"
+        f"🛡 <b>NoShowGuard</b> — ваш умный ассистент и защита расписания от неявок.\n"
         f"Клиенты записываются через удобный Telegram Mini App и вносят "
         f"гарантийный депозит <b>{settings.DEFAULT_DEPOSIT_AMOUNT} ₽</b> через СБП.\n\n"
+        f"🎁 <b>Вам начислен бесплатный пробный период: 7 дней</b> со всеми функциями!\n\n"
         f"🔗 <b>Ваша ссылка для клиентов:</b>\n"
         f"<code>{booking_link}</code>\n\n"
-        f"Разместите ее в шапке профиля или отправляйте клиентам в ЛС."
+        f"Управляйте расписанием, слотами и подпиской в удобном приложении:"
     )
 
     await message.answer(
         welcome_text,
         parse_mode="HTML",
-        reply_markup=get_main_keyboard()
+        reply_markup=get_main_keyboard(tg_id)
     )
     await message.answer(
-        "📱 Вы можете протестировать, как выглядит страница бронирования для ваших клиентов:",
+        "📱 Выберите нужный раздел в Telegram Mini App:",
         reply_markup=get_master_link_inline_kb(tg_id)
     )
 
@@ -194,9 +200,85 @@ async def handle_today_slots(message: Message):
 
     await message.answer("\n".join(lines), parse_mode="HTML")
 
-@router.message(F.text == "⚙️ Мой профиль")
+@router.message(F.text.in_({"📊 Моя статистика", "Статистика"}))
+async def handle_stats(message: Message):
+    """Спасенная выручка и статистика мастера."""
+    tg_id = message.from_user.id
+    async with AsyncSessionLocal() as db:
+        stmt = select(Master).where(Master.tg_id == tg_id)
+        master = (await db.execute(stmt)).scalar_one_or_none()
+        if not master:
+            await message.answer("Сначала отправьте /start.")
+            return
+
+        # Спасенная выручка от No-Show
+        saved_stmt = (
+            select(func.coalesce(func.sum(Booking.deposit_amount), 0))
+            .join(Slot, Booking.slot_id == Slot.id)
+            .where(
+                and_(
+                    Slot.master_id == master.id,
+                    Booking.payment_status == "no_show_retained"
+                )
+            )
+        )
+        saved_revenue = (await db.execute(saved_stmt)).scalar() or 0
+
+        # Общее число подтвержденных записей
+        total_stmt = (
+            select(func.count(Booking.id))
+            .join(Slot, Booking.slot_id == Slot.id)
+            .where(
+                and_(
+                    Slot.master_id == master.id,
+                    Booking.payment_status.in_(["succeeded", "no_show_retained"])
+                )
+            )
+        )
+        total_bookings = (await db.execute(total_stmt)).scalar() or 0
+
+    text = (
+        f"📊 <b>Ваша статистика NoShowGuard:</b>\n\n"
+        f"💰 <b>Спасенная выручка от неявок:</b> <code>{saved_revenue} ₽</code>\n"
+        f"<i>(Удержанные гарантийные депозиты по ст. 381.1 ГК РФ)</i>\n\n"
+        f"📅 <b>Всего сеансов с гарантией:</b> {total_bookings}\n"
+        f"🛡 <b>Защита от срывов:</b> 100% предохранение графика\n\n"
+        f"Подробный интерактивный график доступен в Telegram Mini App:"
+    )
+    await message.answer(text, parse_mode="HTML", reply_markup=get_master_link_inline_kb(tg_id))
+
+@router.message(F.text.in_({"💳 Подписка NoShowGuard", "Подписка"}))
+async def handle_subscription(message: Message):
+    """Информация о подписке и тарифах."""
+    tg_id = message.from_user.id
+    now = utc_now()
+    async with AsyncSessionLocal() as db:
+        stmt = select(Master).where(Master.tg_id == tg_id)
+        master = (await db.execute(stmt)).scalar_one_or_none()
+        if not master:
+            await message.answer("Сначала отправьте /start.")
+            return
+
+        trial_days = 0
+        if master.trial_ends_at and master.trial_ends_at > now:
+            trial_days = max(1, (master.trial_ends_at - now).days + 1)
+
+    status_str = f"🎁 <b>Бесплатный триал:</b> осталось {trial_days} дн." if trial_days > 0 else f"Тариф: <b>{master.subscription_tier.upper()}</b>"
+
+    text = (
+        f"💳 <b>Управление подпиской NoShowGuard:</b>\n\n"
+        f"Текущий статус: {status_str}\n\n"
+        f"<b>Доступные тарифы:</b>\n"
+        f"• <b>«Старт»</b> — <b>490 ₽/мес</b> (до 40 записей, СБП-депозиты, напоминания)\n"
+        f"• <b>«Про»</b> — <b>890 ₽/мес</b> (безлимитные брони, лист ожидания, брендинг)\n\n"
+        f"💡 <i>Подписка окупается с первого же сохраненного сеанса!</i>\n\n"
+        f"Продлите подписку в 1 клик по СБП в приложении:"
+    )
+    await message.answer(text, parse_mode="HTML", reply_markup=get_master_link_inline_kb(tg_id))
+
+@router.message(F.text.in_({"⚙️ Настройки профиля", "⚙️ Мой профиль"}))
 async def handle_profile(message: Message):
-    """Информация о мастере и настройках депозита."""
+    """Информация о мастере, настройках депозита и дайджеста."""
     tg_id = message.from_user.id
     async with AsyncSessionLocal() as db:
         stmt = select(Master).where(Master.tg_id == tg_id)
@@ -206,15 +288,18 @@ async def handle_profile(message: Message):
         await message.answer("Сначала отправьте /start.")
         return
 
+    digest_status = f"Включен (в {master.digest_time})" if master.digest_enabled else "Выключен"
+
     text = (
-        f"⚙️ <b>Профиль мастера:</b>\n\n"
+        f"⚙️ <b>Профиль и настройки мастера:</b>\n\n"
         f"👤 <b>Имя:</b> {master.full_name}\n"
         f"💼 <b>Специализация:</b> {master.profession}\n"
         f"💰 <b>Размер обеспечительного депозита:</b> {master.deposit_amount} ₽\n"
+        f"☀️ <b>Утренний дайджест:</b> {digest_status}\n"
         f"🛡 <b>Юридическое основание:</b> ст. 381.1 ГК РФ (обеспечительный платеж на возмещение ФПР)\n\n"
-        f"<i>При явке клиента сумма депозита засчитывается в оплату услуги, а при неявке компенсирует ваш простой.</i>"
+        f"Изменить размер депозита, время дайджеста или расписание можно в приложении:"
     )
-    await message.answer(text, parse_mode="HTML")
+    await message.answer(text, parse_mode="HTML", reply_markup=get_master_link_inline_kb(tg_id))
 
 @router.callback_query(F.data.startswith("no_show:"))
 async def handle_no_show_callback(call: CallbackQuery):

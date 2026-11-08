@@ -15,6 +15,11 @@ class MasterResponse(MasterBase):
     id: int
     tg_id: int
     is_active: bool
+    trial_ends_at: datetime | None = None
+    subscription_tier: str = "trial"
+    subscription_active_until: datetime | None = None
+    digest_enabled: bool = True
+    digest_time: str = "09:00"
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -39,6 +44,7 @@ class BookingInitiateRequest(BaseModel):
     client_tg_id: int | None = None
     service_title: str = Field(..., min_length=2, max_length=150)
     service_price: int = Field(..., gt=0)
+    terms_accepted: bool = Field(True, description="Согласие с условиями оферты ст. 381.1 ГК РФ")
 
 class BookingInitiateResponse(BaseModel):
     booking_id: int
@@ -61,3 +67,61 @@ class BookingStatusResponse(BaseModel):
     start_time: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class MasterBookingInfo(BaseModel):
+    id: int
+    client_name: str
+    client_phone: str
+    service_title: str
+    service_price: int
+    deposit_amount: int
+    payment_status: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MasterDashboardSlot(BaseModel):
+    id: int
+    start_time: datetime
+    end_time: datetime
+    status: SlotStatus
+    booking: MasterBookingInfo | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MasterDashboardResponse(BaseModel):
+    master: MasterResponse
+    saved_revenue: int
+    total_bookings_count: int
+    trial_days_left: int
+    subscription_tier: str
+    subscription_active: bool
+    digest_enabled: bool
+    digest_time: str
+    slots: list[MasterDashboardSlot]
+
+
+class MasterSettingsUpdate(BaseModel):
+    deposit_amount: int | None = Field(None, ge=0, le=5000)
+    profession: str | None = Field(None, max_length=100)
+    digest_enabled: bool | None = None
+    digest_time: str | None = Field(None, pattern=r"^\d{2}:\d{2}$")
+
+
+class SlotAddRequest(BaseModel):
+    start_time: datetime
+    end_time: datetime
+
+
+class SubscriptionCheckoutRequest(BaseModel):
+    tier: str = Field("start", pattern=r"^(start|pro)$")
+
+
+class SubscriptionCheckoutResponse(BaseModel):
+    payment_id: str
+    tier: str
+    amount: int
+    confirmation_url: str
+

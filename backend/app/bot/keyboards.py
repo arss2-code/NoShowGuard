@@ -7,19 +7,26 @@ from aiogram.types import (
 )
 from app.config import settings
 
-def get_main_keyboard() -> ReplyKeyboardMarkup:
-    """Главная клавиатура управления для мастера."""
+def get_main_keyboard(master_tg_id: int | None = None) -> ReplyKeyboardMarkup:
+    """Главная клавиатура: быстрый запуск TMA + сервисные кнопки."""
+    tma_url = settings.MINI_APP_URL
+    if master_tg_id:
+        tma_url = f"{settings.MINI_APP_URL}?role=master&master_id={master_tg_id}"
+
     keyboard = [
         [
+            KeyboardButton(
+                text="🚀 Открыть NoShowGuard (Кабинет)",
+                web_app=WebAppInfo(url=tma_url)
+            )
+        ],
+        [
             KeyboardButton(text="🔗 Моя ссылка для записи"),
-            KeyboardButton(text="📅 Мои слоты на сегодня")
+            KeyboardButton(text="📊 Моя статистика")
         ],
         [
-            KeyboardButton(text="➕ Создать слоты на сегодня"),
-            KeyboardButton(text="➕ Создать слоты на завтра")
-        ],
-        [
-            KeyboardButton(text="⚙️ Мой профиль")
+            KeyboardButton(text="💳 Подписка NoShowGuard"),
+            KeyboardButton(text="⚙️ Настройки профиля")
         ]
     ]
     return ReplyKeyboardMarkup(
@@ -29,16 +36,22 @@ def get_main_keyboard() -> ReplyKeyboardMarkup:
     )
 
 def get_master_link_inline_kb(master_tg_id: int) -> InlineKeyboardMarkup:
-    """Инлайн-кнопка для открытия Mini App мастера и копирования ссылки."""
-    # startapp параметр передает tg_id мастера в Mini App
+    """Инлайн-кнопки для открытия Mini App (кабинет мастера или витрина клиента)."""
     bot_name = settings.BOT_USERNAME.replace("@", "")
-    tma_url = f"https://t.me/{bot_name}/app?startapp=master_{master_tg_id}"
-    
+    client_tma_url = f"https://t.me/{bot_name}/app?startapp=master_{master_tg_id}"
+    master_tma_url = f"{settings.MINI_APP_URL}?role=master&master_id={master_tg_id}"
+
     keyboard = [
         [
             InlineKeyboardButton(
+                text="🚀 Открыть кабинет мастера (TMA)",
+                web_app=WebAppInfo(url=master_tma_url)
+            )
+        ],
+        [
+            InlineKeyboardButton(
                 text="📱 Открыть витрину (как видит клиент)",
-                url=tma_url
+                url=client_tma_url
             )
         ]
     ]
@@ -49,14 +62,14 @@ def get_booking_action_keyboard(booking_id: int) -> InlineKeyboardMarkup:
     keyboard = [
         [
             InlineKeyboardButton(
-                text="❌ Отменить запись (вернуть слот)",
-                callback_data=f"cancel_booking:{booking_id}"
+                text="⚠️ Клиент не пришел (No-Show)",
+                callback_data=f"no_show:{booking_id}"
             )
         ],
         [
             InlineKeyboardButton(
-                text="⚠️ Клиент не пришел (No-Show)",
-                callback_data=f"no_show:{booking_id}"
+                text="❌ Отменить запись (вернуть слот)",
+                callback_data=f"cancel_booking:{booking_id}"
             )
         ]
     ]
