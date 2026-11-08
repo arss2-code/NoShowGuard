@@ -10,7 +10,7 @@ services:
     env_file:
       - ./backend/.env
     volumes:
-      - noshowguard_storage:/app/backend
+      - ./backend:/app/backend
     environment:
       - HOST=0.0.0.0
       - PORT=8000
@@ -20,6 +20,3 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
-
-volumes:
-  noshowguard_storage:

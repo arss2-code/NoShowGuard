@@ -69,6 +69,7 @@ async def get_or_create_master_db(tg_id: int, db: AsyncSession, full_name: str =
     return master
 
 @router.get("/{tg_id}/dashboard", response_model=MasterDashboardResponse)
+@router.get("/{tg_id}/dashboard/", response_model=MasterDashboardResponse, include_in_schema=False)
 async def get_master_dashboard(
     tg_id: int,
     target_date: date | None = Query(None, description="Фильтр слотов по дате"),
@@ -307,13 +308,14 @@ async def delete_slot(
     return {"message": "Слот успешно удален"}
 
 @router.patch("/{tg_id}/settings")
+@router.patch("/{tg_id}/settings/", include_in_schema=False)
 async def update_settings(
     tg_id: int,
     payload: MasterSettingsUpdate,
     db: AsyncSession = Depends(get_db)
 ):
     """Обновление настроек мастера: ФИО, салон, адрес, депозит, профессия, утренний дайджест."""
-    master = await get_master_or_404(tg_id, db)
+    master = await get_or_create_master_db(tg_id, db)
 
     if payload.full_name is not None and payload.full_name.strip():
         master.full_name = payload.full_name.strip()

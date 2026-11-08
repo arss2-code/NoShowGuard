@@ -23,6 +23,7 @@ from app.services.payment import payment_service
 router = APIRouter(prefix="/api", tags=["Public API"])
 
 @router.get("/masters/{tg_id}", response_model=MasterResponse)
+@router.get("/masters/{tg_id}/", response_model=MasterResponse, include_in_schema=False)
 async def get_master_profile(
     tg_id: int,
     db: AsyncSession = Depends(get_db)
@@ -63,6 +64,7 @@ async def get_master_profile(
     return master
 
 @router.get("/masters/{tg_id}/slots", response_model=list[SlotResponse])
+@router.get("/masters/{tg_id}/slots/", response_model=list[SlotResponse], include_in_schema=False)
 async def get_master_slots(
     tg_id: int,
     date_query: date = Query(..., alias="date", description="Дата в формате YYYY-MM-DD"),
