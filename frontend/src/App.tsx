@@ -214,8 +214,8 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-white text-zinc-900 flex flex-col justify-between max-w-md mx-auto p-4 pb-24 sm:pb-8">
-      <div>
+    <div className="min-h-screen bg-white text-zinc-900 flex flex-col justify-between w-full max-w-md mx-auto px-3.5 sm:px-4 py-3 pb-24 sm:pb-8 overflow-x-hidden min-w-0">
+      <div className="w-full min-w-0 max-w-full">
         {/* Шапка мастера */}
         <MasterHeader master={master} isLoading={isLoadingMaster} />
 
@@ -243,7 +243,7 @@ export default function App() {
 
         {/* Карточка услуги, расчета и контактов */}
         {selectedSlot && (
-          <div className="animate-in fade-in slide-in-from-bottom-3 duration-200">
+          <div className="animate-in fade-in slide-in-from-bottom-3 duration-200 w-full">
             <ServiceCard
               serviceTitle={serviceTitle}
               totalPrice={servicePrice}
@@ -258,9 +258,9 @@ export default function App() {
       </div>
 
       {/* Веб-кнопка (дублер Telegram MainButton для браузера или мобильных без WebApp SDK) */}
-      <div className="mt-4 pt-2">
+      <div className="mt-4 pt-2 w-full">
         {selectedSlot ? (
-          <div className="block sm:hidden fixed bottom-0 left-0 right-0 p-3 bg-white/95 backdrop-blur-md border-t border-zinc-200/80 z-20">
+          <div className="block sm:hidden fixed bottom-0 left-0 right-0 p-3 max-w-md mx-auto bg-white/95 backdrop-blur-md border-t border-zinc-200/80 z-20">
             <button
               type="button"
               disabled={isSubmitting}
@@ -281,7 +281,7 @@ export default function App() {
             </button>
           </div>
         ) : (
-          <div className="p-3 bg-zinc-50 border border-zinc-200/60 rounded-2xl flex items-center gap-2.5 text-xs text-zinc-500">
+          <div className="p-3 bg-zinc-50 border border-zinc-200/60 rounded-2xl flex items-center gap-2.5 text-xs text-zinc-500 w-full">
             <Shield className="w-4 h-4 text-blue-600 flex-shrink-0" />
             <span>Выберите удобное время выше для подтверждения брони.</span>
           </div>

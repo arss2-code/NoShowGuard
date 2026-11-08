@@ -17,11 +17,11 @@ export const TimeSlotGrid: React.FC<Props> = ({
 }) => {
   if (isLoading) {
     return (
-      <div className="my-3">
+      <div className="my-3 w-full">
         <div className="h-4 bg-zinc-100 rounded w-1/4 mb-3 animate-pulse" />
-        <div className="grid grid-cols-3 gap-2.5">
+        <div className="grid grid-cols-3 gap-2">
           {[1, 2, 3, 4, 5, 6].map((i) => (
-            <div key={i} className="h-14 bg-zinc-100 rounded-2xl animate-pulse" />
+            <div key={i} className="h-12 bg-zinc-100 rounded-2xl animate-pulse" />
           ))}
         </div>
       </div>
@@ -30,7 +30,7 @@ export const TimeSlotGrid: React.FC<Props> = ({
 
   if (slots.length === 0) {
     return (
-      <div className="my-4 py-8 px-4 bg-zinc-50 border border-dashed border-zinc-200 rounded-2xl text-center">
+      <div className="my-4 py-8 px-4 bg-zinc-50 border border-dashed border-zinc-200 rounded-2xl text-center w-full">
         <CalendarX className="w-8 h-8 text-zinc-400 mx-auto mb-2" />
         <p className="text-sm font-semibold text-zinc-700">
           Нет свободных окон
@@ -43,18 +43,18 @@ export const TimeSlotGrid: React.FC<Props> = ({
   }
 
   return (
-    <div className="my-3">
+    <div className="my-3 w-full min-w-0 max-w-full">
       <div className="flex items-center justify-between mb-2 px-0.5">
         <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1">
           <Clock className="w-3.5 h-3.5" />
           Свободное время
         </span>
         <span className="text-xs text-emerald-600 font-semibold">
-          {slots.length} {slots.length === 1 ? 'окно' : 'окон'}
+          {slots.length} {slots.length === 1 ? 'окно' : slots.length < 5 ? 'окна' : 'окон'}
         </span>
       </div>
 
-      <div className="grid grid-cols-3 gap-2.5">
+      <div className="grid grid-cols-3 gap-2 w-full min-w-0">
         {slots.map((slot) => {
           const isSelected = slot.id === selectedSlotId;
           const start = new Date(slot.start_time);
@@ -74,17 +74,17 @@ export const TimeSlotGrid: React.FC<Props> = ({
               key={slot.id}
               type="button"
               onClick={() => onSelectSlot(slot)}
-              className={`flex flex-col items-center justify-center py-2.5 px-2 rounded-2xl border transition-all duration-150 ${
+              className={`flex flex-col items-center justify-center py-2 px-1 sm:py-2.5 sm:px-2 rounded-2xl border transition-all duration-150 ${
                 isSelected
                   ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-500/25 scale-[1.02]'
                   : 'bg-white hover:bg-zinc-50 text-zinc-800 border-zinc-200/90 shadow-2xs'
               }`}
             >
-              <span className="text-sm font-bold tracking-tight">
+              <span className="text-xs sm:text-sm font-bold tracking-tight">
                 {timeLabel}
               </span>
               <span
-                className={`text-[10px] font-medium mt-0.5 ${
+                className={`text-[9px] sm:text-[10px] font-medium mt-0.5 ${
                   isSelected ? 'text-blue-100' : 'text-zinc-400'
                 }`}
               >

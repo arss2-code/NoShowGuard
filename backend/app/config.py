@@ -1,14 +1,23 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+DEFAULT_DB_FILE = (BASE_DIR / "noshowguard.db").as_posix()
 
 class Settings(BaseSettings):
     BOT_TOKEN: str = "test_bot_token"
     BOT_USERNAME: str = "NoShowGuardBot"
     MINI_APP_URL: str = "https://t.me/NoShowGuardBot/app"
 
-    DATABASE_URL: str = "sqlite+aiosqlite:///./noshowguard.db"
+    DATABASE_URL: str = f"sqlite+aiosqlite:///{DEFAULT_DB_FILE}"
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def normalize_sqlite_url(cls, v: str | None) -> str:
+        if not v or "sqlite+aiosqlite:///./" in v:
+            return f"sqlite+aiosqlite:///{DEFAULT_DB_FILE}"
+        return v
 
     # YooKassa
     YOOKASSA_SHOP_ID: str | None = None
