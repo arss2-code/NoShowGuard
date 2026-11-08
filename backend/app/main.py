@@ -1,8 +1,10 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import init_db
@@ -10,6 +12,7 @@ from app.routes.public_api import router as public_router
 from app.routes.webhooks import router as webhooks_router
 from app.bot.bot_instance import bot, dp, is_test_token
 from app.bot.handlers import router as master_bot_router
+from app.services.scheduler import start_scheduler, stop_scheduler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -25,6 +28,9 @@ async def lifespan(app: FastAPI):
     logger.info("Инициализация базы данных...")
     await init_db()
 
+    # Запуск планировщика автонапоминаний
+    start_scheduler()
+
     # Подключаем роутеры бота
     dp.include_router(master_bot_router)
 
@@ -38,6 +44,8 @@ async def lifespan(app: FastAPI):
     yield
 
     # --- Shutdown ---
+    stop_scheduler()
+
     if polling_task:
         logger.info("Остановка Polling бота...")
         polling_task.cancel()
@@ -52,7 +60,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="NoShowGuard API",
     description="Микро-SaaS для ликвидации неявок клиентов мастеров услуг за счет сбора СБП-депозитов",
-    version="1.1.0",
+    version="1.2.0",
     lifespan=lifespan
 )
 
@@ -68,6 +76,11 @@ app.add_middleware(
 # Подключение маршрутов API
 app.include_router(public_router)
 app.include_router(webhooks_router)
+
+# Раздача статики собранного фронтенда TMA (если собрана)
+frontend_dist = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+if frontend_dist.exists():
+    app.mount("/app", StaticFiles(directory=str(frontend_dist), html=True), name="frontend")
 
 @app.get("/health", tags=["Health"])
 async def health_check():

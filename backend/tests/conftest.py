@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 
 from app.database import Base, get_db
 import app.bot.handlers as bot_handlers
+import app.services.scheduler as scheduler_service
 from app.main import app as fastapi_app
 
 TEST_DB_URL = "sqlite+aiosqlite:///./test_noshowguard.db"
@@ -20,8 +21,9 @@ TestAsyncSessionLocal = async_sessionmaker(
     expire_on_commit=False
 )
 
-# Перенаправляем сессии бота в тестовую базу во время тестов
+# Перенаправляем сессии бота и планировщика в тестовую базу во время тестов
 bot_handlers.AsyncSessionLocal = TestAsyncSessionLocal
+scheduler_service.AsyncSessionLocal = TestAsyncSessionLocal
 
 @pytest_asyncio.fixture(scope="function", autouse=True)
 async def setup_test_db():

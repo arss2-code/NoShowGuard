@@ -13,6 +13,7 @@ from app.bot.keyboards import (
     get_master_link_inline_kb,
     get_booking_action_keyboard
 )
+from app.bot.bot_instance import safe_send_message
 
 router = Router(name="master_router")
 
@@ -275,3 +276,52 @@ async def handle_cancel_booking_callback(call: CallbackQuery):
         parse_mode="HTML"
     )
     await call.answer("Запись отменена.")
+
+@router.callback_query(F.data.startswith("confirm_visit:"))
+async def handle_confirm_visit(call: CallbackQuery):
+    """Клиент подтверждает визит через напоминание."""
+    booking_id = int(call.data.split(":")[1])
+    await call.message.edit_reply_markup(reply_markup=None)
+    await call.message.answer("✅ <b>Отлично, спасибо!</b>\nМы уведомили мастера, что вы будете вовремя.", parse_mode="HTML")
+    await call.answer("Визит подтвержден!")
+
+@router.callback_query(F.data.startswith("cancel_client:"))
+async def handle_cancel_client(call: CallbackQuery):
+    """Клиент отменяет запись через напоминание."""
+    booking_id = int(call.data.split(":")[1])
+    async with AsyncSessionLocal() as db:
+        stmt = (
+            select(Booking)
+            .options(selectinload(Booking.slot).selectinload(Slot.master))
+            .where(Booking.id == booking_id)
+        )
+        booking = (await db.execute(stmt)).scalar_one_or_none()
+        if not booking:
+            await call.answer("Запись не найдена.", show_alert=True)
+            return
+
+        slot = booking.slot
+        master = slot.master if slot else None
+
+        slot.status = SlotStatus.FREE
+        slot.locked_until = None
+        booking.payment_status = "cancelled_by_client"
+        await db.commit()
+
+        # Уведомляем мастера об освободившемся слоте
+        if master:
+            time_str = slot.start_time.strftime("%d.%m.%Y в %H:%M")
+            master_alert = (
+                f"🔔 <b>Внимание: клиент отменил запись!</b>\n\n"
+                f"Клиент <b>{booking.client_name}</b> отменил бронь на <b>{time_str}</b>.\n"
+                f"Слот автоматически освобожден и снова доступен в вашем расписании."
+            )
+            await safe_send_message(chat_id=master.tg_id, text=master_alert)
+
+    await call.message.edit_reply_markup(reply_markup=None)
+    await call.message.answer(
+        "ℹ️ Ваша запись отменена. Слот возвращен в расписание мастера.",
+        parse_mode="HTML"
+    )
+    await call.answer("Запись отменена.")
+

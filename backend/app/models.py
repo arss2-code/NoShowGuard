@@ -61,6 +61,8 @@ class Booking(Base):
     deposit_amount = Column(Integer, nullable=False)
     payment_id = Column(String(100), unique=True, nullable=True, index=True)
     payment_status = Column(String(50), default="pending", nullable=False)
+    reminder_24h_sent = Column(Boolean, default=False, nullable=False)
+    reminder_2h_sent = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=utc_now, nullable=False)
     
     slot = relationship("Slot", back_populates="booking")
