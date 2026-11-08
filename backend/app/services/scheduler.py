@@ -8,28 +8,14 @@ from app.database import AsyncSessionLocal
 from app.models import Slot, SlotStatus, Booking, Master, utc_now
 from app.services.slot_service import release_expired_slots
 from app.bot.bot_instance import safe_send_message
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from app.bot.keyboards import get_client_reminder_keyboard, get_client_my_bookings_inline_kb
+from app.config import settings
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 
 logger = logging.getLogger(__name__)
 
 scheduler = AsyncIOScheduler()
 _sent_digests_today: set[tuple[int, date]] = set()
-
-def get_client_reminder_keyboard(booking_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(
-                text="✅ Подтверждаю визит",
-                callback_data=f"confirm_visit:{booking_id}"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text="❌ Отменить запись (вернуть слот)",
-                callback_data=f"cancel_client:{booking_id}"
-            )
-        ]
-    ])
 
 async def send_appointment_reminders():
     """Фоновая задача: отправляет напоминания за 24ч и 2ч и освобождает просроченные слоты."""
@@ -60,13 +46,16 @@ async def send_appointment_reminders():
         for b in bookings_24h:
             if b.client_tg_id and b.slot and b.slot.master:
                 slot_time = b.slot.start_time.strftime("%d.%m.%Y в %H:%M")
+                clean_bot = settings.BOT_USERNAME.replace("@", "")
                 msg = (
                     f"🔔 <b>Напоминание о записи!</b>\n\n"
                     f"Завтра в <b>{slot_time}</b> у вас запланирован сеанс.\n"
                     f"👤 <b>Мастер:</b> {b.slot.master.full_name}\n"
                     f"💇‍♀️ <b>Услуга:</b> {b.service_title}\n"
                     f"💰 <b>Депозит:</b> {b.deposit_amount} ₽ учтен (доплата на месте: {max(0, b.service_price - b.deposit_amount)} ₽)\n\n"
-                    f"Пожалуйста, подтвердите визит или предупредите об отмене."
+                    f"Пожалуйста, подтвердите визит или предупредите об отмене.\n\n"
+                    f"──────────────\n"
+                    f"🛡 <i>Запись через @{clean_bot}</i>"
                 )
                 await safe_send_message(
                     chat_id=b.client_tg_id,
@@ -94,16 +83,20 @@ async def send_appointment_reminders():
         for b in bookings_2h:
             if b.client_tg_id and b.slot and b.slot.master:
                 slot_time = b.slot.start_time.strftime("%H:%M")
+                clean_bot = settings.BOT_USERNAME.replace("@", "")
                 msg = (
                     f"⏳ <b>До вашего сеанса осталось 2 часа!</b>\n\n"
                     f"Ждем вас сегодня к <b>{slot_time}</b>.\n"
                     f"👤 <b>Мастер:</b> {b.slot.master.full_name}\n"
                     f"💇‍♀️ <b>Услуга:</b> {b.service_title}\n\n"
-                    f"Хорошего вам дня и отличного результата!"
+                    f"Хорошего вам дня и отличного результата!\n\n"
+                    f"──────────────\n"
+                    f"🛡 <i>Запись через @{clean_bot}</i>"
                 )
                 await safe_send_message(
                     chat_id=b.client_tg_id,
-                    text=msg
+                    text=msg,
+                    reply_markup=get_client_my_bookings_inline_kb()
                 )
             b.reminder_2h_sent = True
 
@@ -170,7 +163,17 @@ async def process_master_digests(db, now: datetime):
                 f"Желаем продуктивного дня без отмен и неявок!"
             )
 
-            await safe_send_message(chat_id=m.tg_id, text=text)
+            # Инлайн-кнопка быстрого перехода в кабинет мастера
+            master_cabinet_kb = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🚀 Открыть расписание (TMA)",
+                        web_app=WebAppInfo(url=f"{settings.resolved_webapp_url}?role=master&master_id={m.tg_id}")
+                    )
+                ]
+            ])
+
+            await safe_send_message(chat_id=m.tg_id, text=text, reply_markup=master_cabinet_kb)
             _sent_digests_today.add((m.id, today))
 
 

@@ -10,20 +10,22 @@ from app.models import Master, Slot, SlotStatus, Booking, utc_now
 from app.config import settings
 from app.bot.keyboards import (
     get_main_keyboard,
+    get_client_reply_keyboard,
     get_master_link_inline_kb,
-    get_booking_action_keyboard
+    get_client_booking_inline_kb,
+    get_client_my_bookings_inline_kb,
+    get_booking_action_keyboard,
+    get_client_reminder_keyboard,
+    get_role_choice_inline_kb
 )
 from app.bot.bot_instance import safe_send_message
+from app.services.slot_service import process_client_cancellation
+from app.services.payment import payment_service
 
-router = Router(name="master_router")
+router = Router(name="hybrid_bot_router")
 
-@router.message(CommandStart())
-async def handle_start(message: Message):
-    """Регистрация мастера и приветственное меню."""
-    tg_id = message.from_user.id
-    full_name = message.from_user.full_name or "Мастер"
-    username = message.from_user.username
-
+async def get_or_create_master(tg_id: int, full_name: str, username: str | None = None) -> Master:
+    """Регистрация мастера в системе или получение существующего."""
     async with AsyncSessionLocal() as db:
         stmt = select(Master).where(Master.tg_id == tg_id)
         result = await db.execute(stmt)
@@ -44,15 +46,19 @@ async def handle_start(message: Message):
             )
             db.add(master)
             await db.commit()
+            await db.refresh(master)
+        return master
 
-    bot_name = settings.BOT_USERNAME.replace("@", "")
-    booking_link = f"https://t.me/{bot_name}/app?startapp=master_{tg_id}"
+async def send_master_welcome(message: Message, master: Master):
+    """Приветственное меню и панель управления мастера."""
+    tg_id = master.tg_id
+    booking_link = settings.get_tma_direct_link(f"master_{tg_id}")
 
     welcome_text = (
-        f"👋 Здравствуйте, <b>{full_name}</b>!\n\n"
+        f"👋 Здравствуйте, <b>{master.full_name}</b>!\n\n"
         f"🛡 <b>NoShowGuard</b> — ваш умный ассистент и защита расписания от неявок.\n"
         f"Клиенты записываются через удобный Telegram Mini App и вносят "
-        f"гарантийный депозит <b>{settings.DEFAULT_DEPOSIT_AMOUNT} ₽</b> через СБП.\n\n"
+        f"гарантийный депозит <b>{master.deposit_amount} ₽</b> через СБП.\n\n"
         f"🎁 <b>Вам начислен бесплатный пробный период: 7 дней</b> со всеми функциями!\n\n"
         f"🔗 <b>Ваша ссылка для клиентов:</b>\n"
         f"<code>{booking_link}</code>\n\n"
@@ -69,12 +75,170 @@ async def handle_start(message: Message):
         reply_markup=get_master_link_inline_kb(tg_id)
     )
 
+@router.message(CommandStart())
+async def handle_start(message: Message):
+    """
+    Гибридный обработчик команды /start:
+    - Разбирает параметры deep linking (клиент по ссылке мастера, раздел 'Мои записи', кабинет мастера)
+    - Направляет пользователя по правильному сценарию.
+    """
+    user = message.from_user
+    tg_id = user.id
+    full_name = user.full_name or "Пользователь"
+    username = user.username
+
+    # Извлекаем параметр start, например: /start master_1234567 или /start my_bookings
+    text_parts = message.text.split(maxsplit=1) if message.text else []
+    start_param = text_parts[1].strip() if len(text_parts) > 1 else ""
+
+    # 1. Сценарий: Клиент перешел по персональной ссылке мастера
+    # Формат: master_1234567 или числовой ID мастера
+    target_master_tg_id: int | None = None
+    if start_param.startswith("master_"):
+        raw_id = start_param.replace("master_", "")
+        if raw_id.isdigit():
+            target_master_tg_id = int(raw_id)
+    elif start_param.isdigit() and int(start_param) != tg_id:
+        target_master_tg_id = int(start_param)
+
+    if target_master_tg_id:
+        async with AsyncSessionLocal() as db:
+            stmt = select(Master).where(Master.tg_id == target_master_tg_id)
+            target_master = (await db.execute(stmt)).scalar_one_or_none()
+
+        if target_master:
+            client_welcome = (
+                f"👋 Здравствуйте, <b>{full_name}</b>!\n\n"
+                f"Вы перешли для онлайн-записи к мастеру <b>{target_master.full_name}</b> "
+                f"({target_master.profession}).\n\n"
+                f"🛡 <b>Гарантия бронирования NoShowGuard:</b>\n"
+                f"• Фиксация времени за вами без очередей и переписок\n"
+                f"• Обеспечительный депозит <b>{target_master.deposit_amount} ₽</b> по СБП (ст. 381.1 ГК РФ)\n"
+                f"• Сумма депозита на 100% засчитывается в стоимость вашей услуги\n"
+                f"• Бесплатная отмена за 12 часов с мгновенным автовозвратом по СБП\n\n"
+                f"Нажмите кнопку ниже, чтобы выбрать удобную дату и время:"
+            )
+            await message.answer(
+                client_welcome,
+                parse_mode="HTML",
+                reply_markup=get_client_reply_keyboard()
+            )
+            await message.answer(
+                "📅 <b>Онлайн-запись:</b>",
+                reply_markup=get_client_booking_inline_kb(target_master.tg_id)
+            )
+            return
+        else:
+            await message.answer(
+                "ℹ️ Мастер по данной ссылке не найден или изменил настройки. "
+                "Вы можете открыть раздел «Мои записи» или зарегистрироваться как мастер.",
+                reply_markup=get_role_choice_inline_kb()
+            )
+            return
+
+    # 2. Сценарий: Прямой переход в «Мои записи»
+    if start_param in ("my_bookings", "mybookings"):
+        await message.answer(
+            "📋 <b>Ваши бронирования и записи:</b>\n\n"
+            "Здесь вы можете посмотреть предстоящие визиты, таймер до сеанса или отменить бронь с гарантированным возвратом.",
+            parse_mode="HTML",
+            reply_markup=get_client_reply_keyboard()
+        )
+        await message.answer(
+            "📱 Нажмите для просмотра:",
+            reply_markup=get_client_my_bookings_inline_kb()
+        )
+        return
+
+    # 3. Сценарий: Реферальная ссылка от коллеги-мастера
+    if start_param.startswith("ref_"):
+        referrer_id_raw = start_param.replace("ref_", "")
+        master = await get_or_create_master(tg_id, full_name, username)
+        if referrer_id_raw.isdigit() and int(referrer_id_raw) != tg_id:
+            ref_id = int(referrer_id_raw)
+            # Уведомляем пригласившего коллегу
+            await safe_send_message(
+                chat_id=ref_id,
+                text=(
+                    f"🎉 <b>Коллега присоединился по вашей ссылке!</b>\n\n"
+                    f"Мастер <b>{full_name}</b> подключился к NoShowGuard.\n"
+                    f"Вам начислен <b>+1 месяц тарифа «Про»</b> в подарок!"
+                )
+            )
+        await send_master_welcome(message, master)
+        return
+
+    # 4. Сценарий: Вход или регистрация мастера
+    if start_param in ("master_dashboard", "master"):
+        master = await get_or_create_master(tg_id, full_name, username)
+        await send_master_welcome(message, master)
+        return
+
+    # 4. Без параметров: Проверяем, зарегистрирован ли уже пользователь как мастер
+    async with AsyncSessionLocal() as db:
+        stmt = select(Master).where(Master.tg_id == tg_id)
+        existing_master = (await db.execute(stmt)).scalar_one_or_none()
+
+    if existing_master:
+        # Пользователь уже является мастером
+        await send_master_welcome(message, existing_master)
+    else:
+        # Новый пользователь: по умолчанию создаем мастера для бесшовного онбординга
+        master = await get_or_create_master(tg_id, full_name, username)
+        await send_master_welcome(message, master)
+
+@router.callback_query(F.data == "register_master")
+async def handle_callback_register_master(call: CallbackQuery):
+    """Регистрация мастера по кнопке выбора роли."""
+    user = call.from_user
+    master = await get_or_create_master(user.id, user.full_name or "Мастер", user.username)
+    await call.answer("Вы зарегистрированы как мастер!")
+    booking_link = settings.get_tma_direct_link(f"master_{master.tg_id}")
+
+    text = (
+        f"🎉 <b>Добро пожаловать в команду мастеров NoShowGuard!</b>\n\n"
+        f"Вам начислен бесплатный пробный период <b>7 дней</b>.\n\n"
+        f"🔗 <b>Ваша персональная ссылка для записи:</b>\n"
+        f"<code>{booking_link}</code>"
+    )
+    await call.message.answer(text, parse_mode="HTML", reply_markup=get_main_keyboard(master.tg_id))
+    await call.message.answer("📱 Кабинет мастера:", reply_markup=get_master_link_inline_kb(master.tg_id))
+
+@router.message(F.text.in_({"💼 Я мастер (подключить сервис)", "💼 Я мастер", "💼 Подключить мой салон / Я мастер"}))
+async def handle_text_register_master(message: Message):
+    """Переключение в режим мастера по текстовой кнопке."""
+    user = message.from_user
+    master = await get_or_create_master(user.id, user.full_name or "Мастер", user.username)
+    await send_master_welcome(message, master)
+
+@router.message(Command("my_bookings"))
+@router.message(F.text.in_({"📋 Мои записи", "Мои записи"}))
+async def handle_cmd_my_bookings(message: Message):
+    """Быстрый доступ к разделу «Мои записи» для клиентов."""
+    text = (
+        f"📋 <b>Ваши записи и активные брони:</b>\n\n"
+        f"Отслеживайте статус визита, таймер обратного отсчета до сеанса "
+        f"и управляйте отменой с автовозвратом по СБП в приложении:"
+    )
+    await message.answer(
+        text,
+        parse_mode="HTML",
+        reply_markup=get_client_my_bookings_inline_kb()
+    )
+
+@router.message(Command("master"))
+async def handle_cmd_master(message: Message):
+    """Команда быстрого перехода в кабинет мастера."""
+    user = message.from_user
+    master = await get_or_create_master(user.id, user.full_name or "Мастер", user.username)
+    await send_master_welcome(message, master)
+
+@router.message(Command("link"))
 @router.message(F.text == "🔗 Моя ссылка для записи")
 async def handle_get_link(message: Message):
     """Отправка персональной ссылки для записи."""
     tg_id = message.from_user.id
-    bot_name = settings.BOT_USERNAME.replace("@", "")
-    booking_link = f"https://t.me/{bot_name}/app?startapp=master_{tg_id}"
+    booking_link = settings.get_tma_direct_link(f"master_{tg_id}")
 
     text = (
         f"🔗 <b>Ваша персональная ссылка для бронирования:</b>\n"
@@ -89,6 +253,42 @@ async def handle_get_link(message: Message):
         parse_mode="HTML",
         reply_markup=get_master_link_inline_kb(tg_id)
     )
+
+@router.message(Command("invite"))
+@router.message(F.text.in_({"🎁 Пригласить коллегу (+1 мес Про)", "🎁 Пригласить коллегу"}))
+async def handle_invite_partner(message: Message):
+    """Партнерская программа для мастеров: +1 месяц тарифа Про за приглашение коллеги."""
+    tg_id = message.from_user.id
+    clean_bot = settings.BOT_USERNAME.replace("@", "")
+    referral_link = f"https://t.me/{clean_bot}?start=ref_{tg_id}"
+
+    text = (
+        f"🎁 <b>Партнерская программа «Пригласи коллегу»:</b>\n\n"
+        f"Поделитесь NoShowGuard с коллегой-мастером (бровист, парикмахер, массажист, тренер). "
+        f"Когда коллега подключит сервис, <b>вы оба получите +1 месяц максимального тарифа «Про» бесплатно!</b>\n\n"
+        f"🔗 <b>Ваша ссылка для приглашения:</b>\n"
+        f"<code>{referral_link}</code>\n\n"
+        f"📋 <b>Готовое сообщение для пересылки:</b>\n"
+        f"<i>«Привет! Я перевожу клиентов на запись через бота NoShowGuard — он автоматически берет депозит 300 ₽ по СБП и исключает неявки. Попробуй 7 дней бесплатно: {referral_link}»</i>"
+    )
+    await message.answer(text, parse_mode="HTML")
+
+@router.message(Command("help"))
+@router.message(F.text.in_({"ℹ️ О сервисе NoShowGuard", "ℹ️ Правила отмены и СБП"}))
+async def handle_help(message: Message):
+    """Справка по юридическим правилам и работе сервиса."""
+    text = (
+        f"🛡 <b>NoShowGuard — надежная защита от срыва записей:</b>\n\n"
+        f"<b>1. Обеспечительный платеж (ст. 381.1 ГК РФ):</b>\n"
+        f"При бронировании клиент вносит небольшой депозит (обычно 300–500 ₽) через СБП. "
+        f"Сумма на 100% засчитывается в оплату сеанса при явке.\n\n"
+        f"<b>2. Правило 12 часов:</b>\n"
+        f"• <b>За 12 часов и ранее:</b> бесплатная отмена. Депозит мгновенно возвращается клиенту по СБП, а слот освобождается.\n"
+        f"• <b>Менее чем за 12 часов:</b> депозит удерживается в пользу мастера в качестве компенсации расходов (ФПР по ст. 32 ЗоЗПП, ст. 782 ГК РФ), а окно возвращается в расписание.\n\n"
+        f"<b>3. Автоматические напоминания:</b>\n"
+        f"Бот присылает клиенту интерактивное напоминание за 24 часа и за 2 часа до сеанса."
+    )
+    await message.answer(text, parse_mode="HTML")
 
 @router.message(F.text.in_({"➕ Создать слоты на сегодня", "➕ Создать слоты на завтра"}))
 async def handle_create_standard_slots(message: Message):
@@ -107,7 +307,6 @@ async def handle_create_standard_slots(message: Message):
             await message.answer("Сначала отправьте /start для регистрации.")
             return
 
-        # Стандартная сетка слотов (по 1.5 часа)
         standard_times = [
             (time(10, 0), time(11, 30)),
             (time(12, 0), time(13, 30)),
@@ -121,7 +320,6 @@ async def handle_create_standard_slots(message: Message):
             start_dt = datetime.combine(target_date, start_t)
             end_dt = datetime.combine(target_date, end_t)
 
-            # Проверяем, нет ли уже слота на это время
             check_stmt = select(Slot).where(
                 and_(
                     Slot.master_id == master.id,
@@ -211,7 +409,6 @@ async def handle_stats(message: Message):
             await message.answer("Сначала отправьте /start.")
             return
 
-        # Спасенная выручка от No-Show
         saved_stmt = (
             select(func.coalesce(func.sum(Booking.deposit_amount), 0))
             .join(Slot, Booking.slot_id == Slot.id)
@@ -224,7 +421,6 @@ async def handle_stats(message: Message):
         )
         saved_revenue = (await db.execute(saved_stmt)).scalar() or 0
 
-        # Общее число подтвержденных записей
         total_stmt = (
             select(func.count(Booking.id))
             .join(Slot, Booking.slot_id == Slot.id)
@@ -340,7 +536,7 @@ async def handle_cancel_booking_callback(call: CallbackQuery):
     async with AsyncSessionLocal() as db:
         stmt = (
             select(Booking)
-            .options(selectinload(Booking.slot))
+            .options(selectinload(Booking.slot).selectinload(Slot.master))
             .where(Booking.id == booking_id)
         )
         booking = (await db.execute(stmt)).scalar_one_or_none()
@@ -355,6 +551,25 @@ async def handle_cancel_booking_callback(call: CallbackQuery):
         booking.payment_status = "cancelled_by_master"
         await db.commit()
 
+        # Если клиент вносил депозит и у него есть Telegram ID, возвращаем депозит и уведомляем
+        if booking.payment_id:
+            payment_service.refund_deposit(
+                payment_id=booking.payment_id,
+                amount=booking.deposit_amount,
+                booking_id=booking.id
+            )
+
+        if booking.client_tg_id:
+            slot_time_str = slot.start_time.strftime("%d.%m.%Y в %H:%M")
+            await safe_send_message(
+                chat_id=booking.client_tg_id,
+                text=(
+                    f"⚠️ <b>Внимание: ваша запись отменена мастером</b>\n\n"
+                    f"Сеанс на <b>{slot_time_str}</b> был отменен специалистом.\n"
+                    f"Сумма обеспечительного депозита <b>{booking.deposit_amount} ₽</b> автоматически возвращена на ваш счет СБП."
+                )
+            )
+
     await call.message.edit_reply_markup(reply_markup=None)
     await call.message.answer(
         f"ℹ️ Запись #{booking_id} отменена мастером. Слот снова свободен для бронирования.",
@@ -364,16 +579,9 @@ async def handle_cancel_booking_callback(call: CallbackQuery):
 
 @router.callback_query(F.data.startswith("confirm_visit:"))
 async def handle_confirm_visit(call: CallbackQuery):
-    """Клиент подтверждает визит через напоминание."""
+    """Клиент подтверждает визит через интерактивное напоминание."""
     booking_id = int(call.data.split(":")[1])
-    await call.message.edit_reply_markup(reply_markup=None)
-    await call.message.answer("✅ <b>Отлично, спасибо!</b>\nМы уведомили мастера, что вы будете вовремя.", parse_mode="HTML")
-    await call.answer("Визит подтвержден!")
 
-@router.callback_query(F.data.startswith("cancel_client:"))
-async def handle_cancel_client(call: CallbackQuery):
-    """Клиент отменяет запись через напоминание."""
-    booking_id = int(call.data.split(":")[1])
     async with AsyncSessionLocal() as db:
         stmt = (
             select(Booking)
@@ -381,32 +589,38 @@ async def handle_cancel_client(call: CallbackQuery):
             .where(Booking.id == booking_id)
         )
         booking = (await db.execute(stmt)).scalar_one_or_none()
-        if not booking:
-            await call.answer("Запись не найдена.", show_alert=True)
-            return
 
-        slot = booking.slot
-        master = slot.master if slot else None
-
-        slot.status = SlotStatus.FREE
-        slot.locked_until = None
-        booking.payment_status = "cancelled_by_client"
-        await db.commit()
-
-        # Уведомляем мастера об освободившемся слоте
-        if master:
-            time_str = slot.start_time.strftime("%d.%m.%Y в %H:%M")
-            master_alert = (
-                f"🔔 <b>Внимание: клиент отменил запись!</b>\n\n"
-                f"Клиент <b>{booking.client_name}</b> отменил бронь на <b>{time_str}</b>.\n"
-                f"Слот автоматически освобожден и снова доступен в вашем расписании."
+        if booking and booking.slot and booking.slot.master:
+            slot_time = booking.slot.start_time.strftime("%d.%m.%Y в %H:%M")
+            master_msg = (
+                f"✅ <b>Клиент подтвердил визит!</b>\n\n"
+                f"Клиент <b>{booking.client_name}</b> подтвердил явку на сеанс <b>{slot_time}</b>.\n"
+                f"Услуга: {booking.service_title}"
             )
-            await safe_send_message(chat_id=master.tg_id, text=master_alert)
+            await safe_send_message(chat_id=booking.slot.master.tg_id, text=master_msg)
 
     await call.message.edit_reply_markup(reply_markup=None)
     await call.message.answer(
-        "ℹ️ Ваша запись отменена. Слот возвращен в расписание мастера.",
+        "✅ <b>Отлично, спасибо!</b>\nМы уведомили мастера, что вы будете вовремя.",
+        parse_mode="HTML"
+    )
+    await call.answer("Визит подтвержден!")
+
+@router.callback_query(F.data.startswith("cancel_client:"))
+async def handle_cancel_client(call: CallbackQuery):
+    """Клиент отменяет запись через напоминание по правилу 12 часов."""
+    booking_id = int(call.data.split(":")[1])
+
+    async with AsyncSessionLocal() as db:
+        try:
+            res = await process_client_cancellation(db, booking_id)
+        except ValueError as e:
+            await call.answer(str(e), show_alert=True)
+            return
+
+    await call.message.edit_reply_markup(reply_markup=None)
+    await call.message.answer(
+        f"ℹ️ {res['message']}",
         parse_mode="HTML"
     )
     await call.answer("Запись отменена.")
-

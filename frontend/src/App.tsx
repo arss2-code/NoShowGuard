@@ -29,14 +29,22 @@ export default function App() {
   const initialRole = useMemo<'client' | 'master'>(() => {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('role') === 'master') return 'master';
-    if (tg?.initDataUnsafe?.start_param === 'master_dashboard') return 'master';
+    const startParam = tg?.initDataUnsafe?.start_param;
+    if (startParam === 'master_dashboard' || startParam === 'master') return 'master';
     return 'client';
   }, [tg]);
 
   const [currentRole, setCurrentRole] = useState<'client' | 'master'>(initialRole);
   const [clientTab, setClientTab] = useState<'booking' | 'my-bookings'>(() => {
     const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.get('tab') === 'my-bookings' ? 'my-bookings' : 'booking';
+    if (urlParams.get('tab') === 'my-bookings' || urlParams.get('tab') === 'my_bookings') {
+      return 'my-bookings';
+    }
+    const startParam = tg?.initDataUnsafe?.start_param;
+    if (startParam === 'my_bookings' || startParam === 'my-bookings') {
+      return 'my-bookings';
+    }
+    return 'booking';
   });
 
   const [selectedDate, setSelectedDate] = useState<string>(() => {

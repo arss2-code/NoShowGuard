@@ -3,6 +3,7 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -14,6 +15,7 @@ from app.routes.webhooks import router as webhooks_router
 from app.bot.bot_instance import bot, dp, is_test_token
 from app.bot.handlers import router as master_bot_router
 from app.services.scheduler import start_scheduler, stop_scheduler
+from aiogram.types import MenuButtonWebApp, WebAppInfo
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,8 +39,49 @@ async def lifespan(app: FastAPI):
 
     global polling_task
     if not is_test_token:
-        logger.info("Запуск Telegram-бота в режиме Long Polling...")
-        polling_task = asyncio.create_task(dp.start_polling(bot))
+        async def run_bot_polling():
+            try:
+                # Настройка кнопки Menu Button (WebApp) в Telegram с таймаутом
+                try:
+                    await asyncio.wait_for(
+                        bot.set_chat_menu_button(
+                            menu_button=MenuButtonWebApp(
+                                text="Запись / Кабинет",
+                                web_app=WebAppInfo(url=settings.resolved_webapp_url)
+                            )
+                        ),
+                        timeout=5.0
+                    )
+                    logger.info("Telegram Menu Button успешно установлена: %s", settings.resolved_webapp_url)
+                except Exception as e:
+                    logger.warning("Установка Menu Button отложена или завершилась по таймауту: %s", e)
+
+                # Регистрация команд бота в меню Telegram
+                try:
+                    from aiogram.types import BotCommand
+                    await asyncio.wait_for(
+                        bot.set_my_commands([
+                            BotCommand(command="start", description="Запуск и главное меню"),
+                            BotCommand(command="my_bookings", description="Мои записи и бронирования"),
+                            BotCommand(command="master", description="Кабинет мастера (расписание и слоты)"),
+                            BotCommand(command="link", description="Моя персональная ссылка для клиентов"),
+                            BotCommand(command="invite", description="Пригласить коллегу (+1 мес Про)"),
+                            BotCommand(command="help", description="Справка и правила отмены (ст. 381.1 ГК РФ)")
+                        ]),
+                        timeout=5.0
+                    )
+                    logger.info("Команды бота успешно зарегистрированы в Telegram")
+                except Exception as e:
+                    logger.warning("Регистрация команд бота отложена: %s", e)
+
+                logger.info("Запуск Telegram-бота в режиме Long Polling...")
+                await dp.start_polling(bot)
+            except asyncio.CancelledError:
+                logger.info("Polling Telegram-бота остановлен.")
+            except Exception as e:
+                logger.error("Ошибка при работе Polling Telegram-бота: %s", e)
+
+        polling_task = asyncio.create_task(run_bot_polling())
     else:
         logger.warning("BOT_TOKEN не задан или является тестовым. Polling бота пропущен.")
 
@@ -83,6 +126,10 @@ app.include_router(webhooks_router)
 frontend_dist = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 if frontend_dist.exists():
     app.mount("/app", StaticFiles(directory=str(frontend_dist), html=True), name="frontend")
+
+@app.get("/", include_in_schema=False)
+async def root_redirect():
+    return RedirectResponse(url="/app/")
 
 @app.get("/health", tags=["Health"])
 async def health_check():

@@ -7,9 +7,10 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models import Booking, Slot, SlotStatus
-from app.services.slot_service import confirm_booking_payment
-from app.bot.bot_instance import safe_send_message
-from app.bot.keyboards import get_booking_action_keyboard
+from app.services.slot_service import (
+    confirm_booking_payment,
+    send_booking_confirmed_notifications
+)
 
 logger = logging.getLogger(__name__)
 
@@ -61,40 +62,8 @@ async def handle_yookassa_webhook(
             logger.error("Ошибка при подтверждении брони #%s: %s", booking_id, e)
             return {"status": "error", "message": str(e)}
 
-        start_time_str = slot.start_time.strftime("%d.%m.%Y в %H:%M")
-        remaining_price = max(0, booking.service_price - booking.deposit_amount)
-
-        # 1. Отправляем пуш мастеру
-        master_msg = (
-            f"✅ <b>Новая запись с гарантией!</b>\n\n"
-            f"Клиент <b>{booking.client_name}</b> внес депозит <b>{booking.deposit_amount} ₽</b> по СБП.\n\n"
-            f"📅 <b>Дата и время:</b> {start_time_str}\n"
-            f"💇‍♀️ <b>Услуга:</b> {booking.service_title}\n"
-            f"💰 <b>Стоимость:</b> {booking.service_price} ₽ (к доплате на месте: {remaining_price} ₽)\n"
-            f"📞 <b>Телефон:</b> {booking.client_phone}\n\n"
-            f"<i>Слот надежно зафиксирован. В случае неявки депозит компенсирует простой.</i>"
-        )
-        await safe_send_message(
-            chat_id=master.tg_id,
-            text=master_msg,
-            reply_markup=get_booking_action_keyboard(booking.id)
-        )
-
-        # 2. Отправляем подтверждение клиенту (если он записывался через Telegram)
-        if booking.client_tg_id:
-            client_msg = (
-                f"✅ <b>Ваша запись успешно подтверждена!</b>\n\n"
-                f"👤 <b>Мастер:</b> {master.full_name}\n"
-                f"📅 <b>Дата и время:</b> {start_time_str}\n"
-                f"💇‍♀️ <b>Услуга:</b> {booking.service_title}\n"
-                f"🛡 <b>Гарантийный депозит:</b> {booking.deposit_amount} ₽ внесен через СБП.\n"
-                f"💵 <b>К оплате на месте:</b> {remaining_price} ₽\n\n"
-                f"Ждем вас вовремя! Накануне сеанса мы пришлем напоминание."
-            )
-            await safe_send_message(
-                chat_id=booking.client_tg_id,
-                text=client_msg
-            )
+        # Отправляем мгновенные Push-уведомления мастеру и клиенту
+        await send_booking_confirmed_notifications(booking, slot, master)
 
         return {"status": "ok", "booking_id": booking.id, "slot_status": slot.status.value}
 
