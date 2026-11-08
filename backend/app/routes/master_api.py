@@ -31,6 +31,27 @@ async def get_master_or_404(tg_id: int, db: AsyncSession) -> Master:
         )
     return master
 
+async def get_or_create_master_db(tg_id: int, db: AsyncSession, full_name: str = "Мастер") -> Master:
+    """Получает профиль мастера или автоматически создает новый с 7-дневным триалом."""
+    stmt = select(Master).where(Master.tg_id == tg_id)
+    master = (await db.execute(stmt)).scalar_one_or_none()
+    if not master:
+        now = utc_now()
+        master = Master(
+            tg_id=tg_id,
+            full_name=full_name,
+            profession="Мастер услуг",
+            deposit_amount=settings.DEFAULT_DEPOSIT_AMOUNT,
+            trial_ends_at=now + timedelta(days=7),
+            subscription_tier="trial",
+            digest_enabled=True,
+            digest_time="09:00"
+        )
+        db.add(master)
+        await db.commit()
+        await db.refresh(master)
+    return master
+
 @router.get("/{tg_id}/dashboard", response_model=MasterDashboardResponse)
 async def get_master_dashboard(
     tg_id: int,
@@ -44,7 +65,7 @@ async def get_master_dashboard(
     - Статус 7-дневного триала и подписки
     - Список слотов с деталями клиентов
     """
-    master = await get_master_or_404(tg_id, db)
+    master = await get_or_create_master_db(tg_id, db)
     now = utc_now()
 
     # Инициализация триала при первом входе, если не установлен

@@ -1,11 +1,12 @@
-from datetime import date
+from datetime import date, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models import Master, Slot, Booking
+from app.models import Master, Slot, Booking, utc_now
+from app.config import settings
 from app.schemas import (
     MasterResponse,
     SlotResponse,
@@ -26,15 +27,25 @@ async def get_master_profile(
     tg_id: int,
     db: AsyncSession = Depends(get_db)
 ):
-    """Получение публичной информации о мастере для Mini App."""
+    """Получение публичной информации о мастере для Mini App. Если мастер новый — мягко инициализирует профиль."""
     stmt = select(Master).where(Master.tg_id == tg_id)
     result = await db.execute(stmt)
     master = result.scalar_one_or_none()
     if not master:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Мастер не найден"
+        now = utc_now()
+        master = Master(
+            tg_id=tg_id,
+            full_name="Мастер услуг",
+            profession="Частный специалист",
+            deposit_amount=settings.DEFAULT_DEPOSIT_AMOUNT,
+            trial_ends_at=now + timedelta(days=7),
+            subscription_tier="trial",
+            digest_enabled=True,
+            digest_time="09:00"
         )
+        db.add(master)
+        await db.commit()
+        await db.refresh(master)
     return master
 
 @router.get("/masters/{tg_id}/slots", response_model=list[SlotResponse])

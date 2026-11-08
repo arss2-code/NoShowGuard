@@ -23,16 +23,25 @@ import type {
 } from './api/client';
 
 export default function App() {
-  const { user, masterId, mainButton, triggerHaptic, openExternalLink, tg } = useTelegram();
+  const { user, masterId, targetMasterId, myMasterId, mainButton, triggerHaptic, openExternalLink, tg } = useTelegram();
+
+  // Пришел ли пользователь по прямой ссылке клиента к другому мастеру (master_XXXX)
+  const isDirectClientLink = useMemo(() => {
+    return Boolean(targetMasterId && Number(targetMasterId) !== user.id);
+  }, [targetMasterId, user.id]);
 
   // Определение начального режима (клиент или мастер)
   const initialRole = useMemo<'client' | 'master'>(() => {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('role') === 'master') return 'master';
+    if (urlParams.get('role') === 'client') return 'client';
     const startParam = tg?.initDataUnsafe?.start_param;
     if (startParam === 'master_dashboard' || startParam === 'master') return 'master';
-    return 'client';
-  }, [tg]);
+    if (startParam?.startsWith('master_')) return 'client';
+
+    // По умолчанию: если есть прямая клиентская ссылка — режим клиента, иначе — кабинет мастера
+    return isDirectClientLink ? 'client' : 'master';
+  }, [tg, isDirectClientLink]);
 
   const [currentRole, setCurrentRole] = useState<'client' | 'master'>(initialRole);
   const [clientTab, setClientTab] = useState<'booking' | 'my-bookings'>(() => {
@@ -286,45 +295,40 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50/50 text-zinc-900 flex flex-col justify-between w-full max-w-md mx-auto px-3.5 sm:px-4 py-3 pb-24 sm:pb-8 overflow-x-hidden min-w-0">
+    <div className="min-h-screen bg-white text-zinc-900 flex flex-col justify-between w-full max-w-md mx-auto px-3.5 sm:px-4 py-3 pb-24 sm:pb-8 overflow-x-hidden min-w-0">
       <div className="w-full min-w-0 max-w-full">
-        {/* Переключатель режимов: Клиент / Кабинет мастера */}
-        <div className="mb-3 flex justify-center">
-          <div className="bg-gray-200/80 p-0.5 rounded-full flex gap-1 shadow-2xs">
-            <button
-              onClick={() => {
-                triggerHaptic('selection');
-                setCurrentRole('client');
-              }}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition ${
-                currentRole === 'client'
-                  ? 'bg-white text-gray-900 shadow-xs'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <UserCheck className="w-3.5 h-3.5 text-blue-600" />
-              <span>Клиент</span>
-            </button>
-            <button
-              onClick={() => {
-                triggerHaptic('selection');
-                setCurrentRole('master');
-              }}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition ${
-                currentRole === 'master'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <Crown className={`w-3.5 h-3.5 ${currentRole === 'master' ? 'text-amber-300' : 'text-amber-500'}`} />
-              <span>Кабинет мастера</span>
-            </button>
+        {/* Кнопка переключения предпросмотра витрины (только для владельца-мастера) */}
+        {!isDirectClientLink && (
+          <div className="mb-3 flex justify-end">
+            {currentRole === 'master' ? (
+              <button
+                onClick={() => {
+                  triggerHaptic('selection');
+                  setCurrentRole('client');
+                }}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium text-gray-500 bg-gray-100 hover:bg-gray-200 transition"
+              >
+                <UserCheck className="w-3.5 h-3.5 text-blue-600" />
+                <span>Предпросмотр витрины</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  triggerHaptic('selection');
+                  setCurrentRole('master');
+                }}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-600 text-white shadow-xs transition"
+              >
+                <Crown className="w-3.5 h-3.5 text-amber-300" />
+                <span>Вернуться в кабинет</span>
+              </button>
+            )}
           </div>
-        </div>
+        )}
 
         {/* Режим МАСТЕРА */}
         {currentRole === 'master' ? (
-          <MasterDashboard masterTgId={Number(masterId) || 1234567} />
+          <MasterDashboard masterTgId={myMasterId} />
         ) : (
           /* Режим КЛИЕНТА */
           <div className="space-y-3">

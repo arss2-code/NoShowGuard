@@ -8,6 +8,8 @@ declare global {
         ready: () => void;
         expand: () => void;
         close: () => void;
+        setHeaderColor?: (color: string) => void;
+        setBackgroundColor?: (color: string) => void;
         openLink: (url: string) => void;
         openTelegramLink: (url: string) => void;
         initData: string;
@@ -66,35 +68,17 @@ export function useTelegram() {
       try {
         tg.ready();
         tg.expand();
+        if (typeof tg.setHeaderColor === 'function') {
+          tg.setHeaderColor('#ffffff');
+        }
+        if (typeof tg.setBackgroundColor === 'function') {
+          tg.setBackgroundColor('#ffffff');
+        }
         setIsReady(true);
       } catch (err) {
         console.warn('Telegram WebApp init warning:', err);
       }
     }
-  }, [tg]);
-
-  // Извлечение id мастера из параметра ?startapp=master_123456 или URLSearchParams
-  const masterId = useMemo(() => {
-    // 1. Проверяем Telegram initDataUnsafe.start_param
-    const startParam = tg?.initDataUnsafe?.start_param;
-    if (startParam) {
-      const match = startParam.match(/^master_(\d+)$/);
-      if (match) return match[1];
-      if (/^\d+$/.test(startParam)) return startParam;
-    }
-
-    // 2. Проверяем обычные query-параметры браузера (?startapp=master_123 или ?master_id=123)
-    const urlParams = new URLSearchParams(window.location.search);
-    const startAppParam = urlParams.get('startapp');
-    if (startAppParam) {
-      const match = startAppParam.match(/^master_(\d+)$/);
-      if (match) return match[1];
-    }
-    const directMasterId = urlParams.get('master_id') || urlParams.get('masterId');
-    if (directMasterId) return directMasterId;
-
-    // Резервный ID мастера по умолчанию для локального тестирования
-    return '1234567';
   }, [tg]);
 
   const user = useMemo(() => {
@@ -109,11 +93,47 @@ export function useTelegram() {
     }
     return {
       id: 999999,
-      firstName: 'Клиент',
+      firstName: 'Пользователь',
       lastName: '',
-      fullName: 'Клиент'
+      fullName: 'Пользователь'
     };
   }, [tg]);
+
+  // Извлечение id мастера, к которому пришел клиент (только если передана клиентская ссылка master_XXXX)
+  const targetMasterId = useMemo<string | null>(() => {
+    // 1. Проверяем Telegram initDataUnsafe.start_param
+    const startParam = tg?.initDataUnsafe?.start_param;
+    if (startParam) {
+      const match = startParam.match(/^master_(\d+)$/);
+      if (match) return match[1];
+      if (/^\d+$/.test(startParam) && Number(startParam) !== user.id) return startParam;
+    }
+
+    // 2. Проверяем обычные query-параметры браузера (?startapp=master_123 или ?master_id=123)
+    const urlParams = new URLSearchParams(window.location.search);
+    const startAppParam = urlParams.get('startapp');
+    if (startAppParam) {
+      const match = startAppParam.match(/^master_(\d+)$/);
+      if (match) return match[1];
+    }
+    const directMasterId = urlParams.get('master_id') || urlParams.get('masterId');
+    if (directMasterId && Number(directMasterId) !== user.id) return directMasterId;
+
+    return null;
+  }, [tg, user.id]);
+
+  // Мастер ID для витрины записи клиента
+  const masterId = useMemo(() => {
+    if (targetMasterId) return targetMasterId;
+    if (user.id !== 999999) return String(user.id);
+    return '1234567';
+  }, [targetMasterId, user.id]);
+
+  // Реальный ID мастера для кабинета управления
+  const myMasterId = useMemo(() => {
+    if (user.id !== 999999) return user.id;
+    return 1234567;
+  }, [user.id]);
 
   const triggerHaptic = useCallback(
     (type: 'light' | 'medium' | 'heavy' | 'success' | 'error' | 'warning' | 'selection') => {
@@ -149,6 +169,8 @@ export function useTelegram() {
     isReady,
     user,
     masterId,
+    targetMasterId,
+    myMasterId,
     mainButton: tg?.MainButton,
     triggerHaptic,
     openExternalLink,
