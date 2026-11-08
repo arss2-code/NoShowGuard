@@ -63,9 +63,20 @@ export const MasterSettings: React.FC<MasterSettingsProps> = ({
   // Новая услуга
   const [newTitle, setNewTitle] = useState('');
   const [newPrice, setNewPrice] = useState('');
-  const [newDuration, setNewDuration] = useState('60');
+  const [newDuration, setNewDuration] = useState('');
   const [isAddingService, setIsAddingService] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  // Синхронизация локального стейта при обновлении профиля родительским компонентом
+  React.useEffect(() => {
+    if (initialFullName) setFullName(initialFullName);
+    if (initialSalonName !== undefined) setSalonName(initialSalonName);
+    if (initialAddress !== undefined) setAddress(initialAddress);
+    if (initialDeposit !== undefined) setDepositAmount(initialDeposit);
+    if (initialProfession) setProfession(initialProfession);
+    if (initialDigestEnabled !== undefined) setDigestEnabled(initialDigestEnabled);
+    if (initialDigestTime) setDigestTime(initialDigestTime);
+  }, [initialFullName, initialSalonName, initialAddress, initialDeposit, initialProfession, initialDigestEnabled, initialDigestTime]);
 
   const clientBookingLink = `https://t.me/NoShowGuard_demo_bot/app?startapp=master_${masterTgId}`;
 
@@ -108,14 +119,15 @@ export const MasterSettings: React.FC<MasterSettingsProps> = ({
     if (!newTitle.trim() || !newPrice) return;
     setIsAddingService(true);
     try {
+      const duration = Number(newDuration) > 0 ? Number(newDuration) : 60;
       await createMasterService(masterTgId, {
         title: newTitle.trim(),
         price: Number(newPrice),
-        duration_minutes: Number(newDuration) || 60
+        duration_minutes: duration
       });
       setNewTitle('');
       setNewPrice('');
-      setNewDuration('60');
+      setNewDuration('');
       onRefresh();
     } catch (err: any) {
       alert(err.message || 'Ошибка добавления услуги');
@@ -235,49 +247,74 @@ export const MasterSettings: React.FC<MasterSettingsProps> = ({
         </div>
 
         {/* Форма добавления услуги */}
-        <form onSubmit={handleAddService} className="pt-2 border-t border-gray-100 space-y-2">
-          <div className="text-xs font-semibold text-gray-700">Добавить новую услугу:</div>
+        <form onSubmit={handleAddService} className="pt-2.5 border-t border-gray-100 space-y-2.5">
+          <div className="text-xs font-semibold text-gray-800">Добавить новую услугу:</div>
           <div className="space-y-2">
-            <input
-              type="text"
-              value={newTitle}
-              onChange={(e) => setNewTitle(e.target.value)}
-              placeholder="Название (например: Стрижка + укладка)"
-              className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-900"
-              required
-            />
+            <div>
+              <label className="text-[11px] text-gray-500 block mb-0.5">Название процедуры</label>
+              <input
+                type="text"
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                placeholder="Например: Стрижка + укладка или Маникюр"
+                className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-900 focus:bg-white focus:ring-1 focus:ring-blue-500"
+                required
+              />
+            </div>
+
             <div className="grid grid-cols-2 gap-2">
-              <div className="relative">
+              <div>
+                <label className="text-[11px] text-gray-500 block mb-0.5">Стоимость, ₽</label>
                 <input
                   type="number"
                   value={newPrice}
                   onChange={(e) => setNewPrice(e.target.value)}
-                  placeholder="Цена, ₽"
+                  placeholder="2500"
                   min="100"
                   step="50"
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-900"
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-900 focus:bg-white focus:ring-1 focus:ring-blue-500"
                   required
                 />
               </div>
-              <div className="relative">
+              <div>
+                <label className="text-[11px] text-gray-500 block mb-0.5">Длительность, мин</label>
                 <input
                   type="number"
                   value={newDuration}
                   onChange={(e) => setNewDuration(e.target.value)}
-                  placeholder="Минуты (60)"
+                  placeholder="60"
                   min="10"
                   max="480"
-                  step="10"
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-900"
-                  required
+                  step="5"
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-900 focus:bg-white focus:ring-1 focus:ring-blue-500"
                 />
               </div>
             </div>
+
+            {/* Быстрые кнопки выбора длительности */}
+            <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+              <span className="text-[10px] text-gray-400">Быстрый выбор:</span>
+              {[30, 45, 60, 90, 120].map((mins) => (
+                <button
+                  key={mins}
+                  type="button"
+                  onClick={() => setNewDuration(String(mins))}
+                  className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold border transition ${
+                    newDuration === String(mins)
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                  }`}
+                >
+                  {mins} мин
+                </button>
+              ))}
+            </div>
           </div>
+
           <button
             type="submit"
             disabled={isAddingService || !newTitle.trim() || !newPrice}
-            className="w-full py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition disabled:opacity-50"
+            className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-xs transition disabled:opacity-50"
           >
             {isAddingService ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />

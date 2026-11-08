@@ -335,22 +335,24 @@ async def update_settings(
     return {"message": "Настройки успешно сохранены", "master": MasterResponse.model_validate(master)}
 
 @router.get("/{tg_id}/services", response_model=list[ServiceResponse])
+@router.get("/{tg_id}/services/", response_model=list[ServiceResponse], include_in_schema=False)
 async def get_master_services(
     tg_id: int,
     db: AsyncSession = Depends(get_db)
 ):
     """Получение каталога услуг мастера."""
-    master = await get_master_or_404(tg_id, db)
+    master = await get_or_create_master_db(tg_id, db)
     return [ServiceResponse.model_validate(s) for s in master.services if s.is_active]
 
 @router.post("/{tg_id}/services", response_model=ServiceResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/{tg_id}/services/", response_model=ServiceResponse, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 async def create_master_service(
     tg_id: int,
     payload: ServiceCreate,
     db: AsyncSession = Depends(get_db)
 ):
     """Добавление новой услуги в прайс-лист мастера."""
-    master = await get_master_or_404(tg_id, db)
+    master = await get_or_create_master_db(tg_id, db)
     new_svc = Service(
         master_id=master.id,
         title=payload.title.strip(),
@@ -364,6 +366,7 @@ async def create_master_service(
     return ServiceResponse.model_validate(new_svc)
 
 @router.patch("/{tg_id}/services/{service_id}", response_model=ServiceResponse)
+@router.patch("/{tg_id}/services/{service_id}/", response_model=ServiceResponse, include_in_schema=False)
 async def update_master_service(
     tg_id: int,
     service_id: int,
@@ -371,7 +374,7 @@ async def update_master_service(
     db: AsyncSession = Depends(get_db)
 ):
     """Редактирование услуги мастера."""
-    master = await get_master_or_404(tg_id, db)
+    master = await get_or_create_master_db(tg_id, db)
     stmt = select(Service).where(and_(Service.id == service_id, Service.master_id == master.id))
     svc = (await db.execute(stmt)).scalar_one_or_none()
     if not svc:
@@ -391,13 +394,14 @@ async def update_master_service(
     return ServiceResponse.model_validate(svc)
 
 @router.delete("/{tg_id}/services/{service_id}")
+@router.delete("/{tg_id}/services/{service_id}/", include_in_schema=False)
 async def delete_master_service(
     tg_id: int,
     service_id: int,
     db: AsyncSession = Depends(get_db)
 ):
     """Удаление услуги мастера."""
-    master = await get_master_or_404(tg_id, db)
+    master = await get_or_create_master_db(tg_id, db)
     stmt = select(Service).where(and_(Service.id == service_id, Service.master_id == master.id))
     svc = (await db.execute(stmt)).scalar_one_or_none()
     if not svc:

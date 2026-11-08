@@ -486,14 +486,22 @@ async def handle_profile(message: Message):
 
     digest_status = f"Включен (в {master.digest_time})" if master.digest_enabled else "Выключен"
 
+    loc_lines = []
+    if master.salon_name:
+        loc_lines.append(f"🏢 <b>Салон/студия:</b> {master.salon_name}")
+    if master.address:
+        loc_lines.append(f"📍 <b>Адрес приёма:</b> {master.address}")
+    location_block = ("\n" + "\n".join(loc_lines)) if loc_lines else ""
+
     text = (
         f"⚙️ <b>Профиль и настройки мастера:</b>\n\n"
         f"👤 <b>Имя:</b> {master.full_name}\n"
         f"💼 <b>Специализация:</b> {master.profession}\n"
+        f"{location_block}\n"
         f"💰 <b>Размер обеспечительного депозита:</b> {master.deposit_amount} ₽\n"
         f"☀️ <b>Утренний дайджест:</b> {digest_status}\n"
         f"🛡 <b>Юридическое основание:</b> ст. 381.1 ГК РФ (обеспечительный платеж на возмещение ФПР)\n\n"
-        f"Изменить размер депозита, время дайджеста или расписание можно в приложении:"
+        f"Изменить размер депозита, адрес, услуги или расписание можно в приложении:"
     )
     await message.answer(text, parse_mode="HTML", reply_markup=get_master_link_inline_kb(tg_id))
 

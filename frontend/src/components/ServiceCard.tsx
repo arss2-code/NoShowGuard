@@ -145,13 +145,13 @@ export const ServiceCard: React.FC<Props> = ({
 
         <div>
           <label className="text-[11px] font-medium text-zinc-500 block mb-1">
-            Ваше имя
+            Ваше имя (клиента для бронирования)
           </label>
           <input
             type="text"
             value={clientName}
             onChange={(e) => onChangeName(e.target.value)}
-            placeholder="Иван"
+            placeholder="Ваше имя"
             className="w-full px-3 py-2 text-sm bg-zinc-50 border border-zinc-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all text-zinc-900"
           />
         </div>

@@ -9,9 +9,10 @@ import { MasterSettings } from './MasterSettings';
 
 interface MasterDashboardProps {
   masterTgId: number;
+  onProfileUpdated?: () => void;
 }
 
-export const MasterDashboard: React.FC<MasterDashboardProps> = ({ masterTgId }) => {
+export const MasterDashboard: React.FC<MasterDashboardProps> = ({ masterTgId, onProfileUpdated }) => {
   const [data, setData] = useState<MasterDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,6 +31,7 @@ export const MasterDashboard: React.FC<MasterDashboardProps> = ({ masterTgId }) 
       setError(null);
       const res = await fetchMasterDashboard(masterTgId);
       setData(res);
+      onProfileUpdated?.();
     } catch (err: any) {
       setError(err.message || 'Ошибка загрузки кабинета мастера');
     } finally {

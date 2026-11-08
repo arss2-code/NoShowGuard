@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useTransition, useMemo } from 'react';
-import { Shield, AlertCircle, ArrowRight, Loader2, UserCheck, Crown, CalendarCheck, Ticket } from 'lucide-react';
+import { Shield, AlertCircle, ArrowRight, Loader2, UserCheck, CalendarCheck, Ticket } from 'lucide-react';
 import { useTelegram } from './hooks/useTelegram';
 import { MasterHeader } from './components/MasterHeader';
 import { DateCarousel } from './components/DateCarousel';
@@ -24,12 +24,12 @@ import type {
 } from './api/client';
 
 export default function App() {
-  const { user, masterId, targetMasterId, myMasterId, mainButton, triggerHaptic, openExternalLink, tg } = useTelegram();
+  const { user, masterId, myMasterId, mainButton, triggerHaptic, openExternalLink, tg } = useTelegram();
 
-  // Пришел ли пользователь по прямой ссылке клиента к другому мастеру (master_XXXX)
-  const isDirectClientLink = useMemo(() => {
-    return Boolean(targetMasterId && Number(targetMasterId) !== user.id);
-  }, [targetMasterId, user.id]);
+  // Является ли пользователь реальным клиентом (чужой посетитель по ссылке, не владелец кабинета)
+  const isRealClient = useMemo(() => {
+    return Boolean(user.id && user.id !== 999999 && Number(masterId) !== user.id);
+  }, [masterId, user.id]);
 
   // Определение начального режима (клиент или мастер)
   const initialRole = useMemo<'client' | 'master'>(() => {
@@ -40,9 +40,9 @@ export default function App() {
     if (startParam === 'master_dashboard' || startParam === 'master') return 'master';
     if (startParam?.startsWith('master_')) return 'client';
 
-    // По умолчанию: если есть прямая клиентская ссылка — режим клиента, иначе — кабинет мастера
-    return isDirectClientLink ? 'client' : 'master';
-  }, [tg, isDirectClientLink]);
+    // По умолчанию: для реального клиента — только витрина, для мастера — кабинет
+    return isRealClient ? 'client' : 'master';
+  }, [tg, isRealClient]);
 
   const [currentRole, setCurrentRole] = useState<'client' | 'master'>(initialRole);
   const [clientTab, setClientTab] = useState<'booking' | 'my-bookings'>(() => {
@@ -311,38 +311,50 @@ export default function App() {
   return (
     <div className="min-h-screen bg-white text-zinc-900 flex flex-col justify-between w-full max-w-md mx-auto px-3.5 sm:px-4 py-3 pb-24 sm:pb-8 overflow-x-hidden min-w-0">
       <div className="w-full min-w-0 max-w-full">
-        {/* Кнопка переключения предпросмотра витрины (только для владельца-мастера) */}
-        {!isDirectClientLink && (
-          <div className="mb-3 flex justify-end">
+        {/* Панель предпросмотра: ТОЛЬКО для мастера! Для реального клиента скрыта на 100%! */}
+        {!isRealClient && (
+          <div className="mb-3">
             {currentRole === 'master' ? (
-              <button
-                onClick={() => {
-                  triggerHaptic('selection');
-                  setCurrentRole('client');
-                }}
-                className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium text-gray-500 bg-gray-100 hover:bg-gray-200 transition"
-              >
-                <UserCheck className="w-3.5 h-3.5 text-blue-600" />
-                <span>Предпросмотр витрины</span>
-              </button>
+              <div className="flex justify-end">
+                <button
+                  onClick={() => {
+                    triggerHaptic('selection');
+                    setCurrentRole('client');
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium text-gray-500 bg-gray-100 hover:bg-gray-200 transition"
+                >
+                  <UserCheck className="w-3.5 h-3.5 text-blue-600" />
+                  <span>👁 Предпросмотр витрины</span>
+                </button>
+              </div>
             ) : (
-              <button
-                onClick={() => {
-                  triggerHaptic('selection');
-                  setCurrentRole('master');
-                }}
-                className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-600 text-white shadow-xs transition"
-              >
-                <Crown className="w-3.5 h-3.5 text-amber-300" />
-                <span>Вернуться в кабинет</span>
-              </button>
+              <div className="p-2.5 bg-blue-50/90 border border-blue-200/80 rounded-2xl flex items-center justify-between text-xs shadow-2xs">
+                <div className="flex items-center gap-1.5 text-blue-900 font-medium min-w-0 pr-2">
+                  <UserCheck className="w-4 h-4 text-blue-600 shrink-0" />
+                  <span className="truncate"><b>Предпросмотр:</b> клиенты этот баннер не видят</span>
+                </div>
+                <button
+                  onClick={() => {
+                    triggerHaptic('selection');
+                    setCurrentRole('master');
+                  }}
+                  className="px-3 py-1 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 shadow-xs transition shrink-0"
+                >
+                  В кабинет
+                </button>
+              </div>
             )}
           </div>
         )}
 
         {/* Режим МАСТЕРА */}
         {currentRole === 'master' ? (
-          <MasterDashboard masterTgId={myMasterId} />
+          <MasterDashboard 
+            masterTgId={myMasterId}
+            onProfileUpdated={() => {
+              fetchMaster(masterId).then(setMaster).catch(() => {});
+            }}
+          />
         ) : (
           /* Режим КЛИЕНТА */
           <div className="space-y-3">
