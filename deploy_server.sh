@@ -5,7 +5,7 @@ echo "=========================================================="
 echo "🚀 АВТОМАТИЧЕСКИЙ ДЕПЛОЙ NoShowGuard НА PRODUCTION VPS"
 echo "=========================================================="
 
-DOMAIN="noshowguard.151.243.208.161.sslip.io"
+DOMAIN="lightweight-oval-falling-crossing.trycloudflare.com"
 WEBAPP_URL="https://${DOMAIN}/app"
 BOT_TOKEN="9223503605:AAHbBYxWZHuq0aCJgzI44eWSl9il5gJ1M8I"
 BOT_USERNAME="NoShowGuard_demo_bot"
