@@ -6,7 +6,31 @@ class MasterBase(BaseModel):
     full_name: str = Field(..., max_length=100)
     username: str | None = Field(None, max_length=50)
     profession: str = Field("Мастер услуг", max_length=100)
+    salon_name: str | None = Field(None, max_length=150)
+    address: str | None = Field(None, max_length=255)
     deposit_amount: int = Field(300, ge=0)
+
+class ServiceBase(BaseModel):
+    title: str = Field(..., min_length=2, max_length=150)
+    price: int = Field(..., gt=0)
+    duration_minutes: int = Field(60, ge=5, le=480)
+
+class ServiceCreate(ServiceBase):
+    pass
+
+class ServiceUpdate(BaseModel):
+    title: str | None = Field(None, min_length=2, max_length=150)
+    price: int | None = Field(None, gt=0)
+    duration_minutes: int | None = Field(None, ge=5, le=480)
+    is_active: bool | None = None
+
+class ServiceResponse(ServiceBase):
+    id: int
+    master_id: int
+    is_active: bool
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 class MasterCreate(MasterBase):
     tg_id: int
@@ -21,6 +45,7 @@ class MasterResponse(MasterBase):
     digest_enabled: bool = True
     digest_time: str = "09:00"
     created_at: datetime
+    services: list[ServiceResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -101,11 +126,15 @@ class MasterDashboardResponse(BaseModel):
     digest_enabled: bool
     digest_time: str
     slots: list[MasterDashboardSlot]
+    services: list[ServiceResponse] = []
 
 
 class MasterSettingsUpdate(BaseModel):
-    deposit_amount: int | None = Field(None, ge=0, le=5000)
+    full_name: str | None = Field(None, min_length=2, max_length=100)
     profession: str | None = Field(None, max_length=100)
+    salon_name: str | None = Field(None, max_length=150)
+    address: str | None = Field(None, max_length=255)
+    deposit_amount: int | None = Field(None, ge=0, le=5000)
     digest_enabled: bool | None = None
     digest_time: str | None = Field(None, pattern=r"^\d{2}:\d{2}$")
 

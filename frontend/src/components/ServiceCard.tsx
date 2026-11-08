@@ -1,8 +1,12 @@
 import React from 'react';
-import { Phone, CheckCircle2, Scale } from 'lucide-react';
+import { Phone, CheckCircle2, Scale, Sparkles, Clock } from 'lucide-react';
 import { formatPhoneNumber } from '../utils/phone';
+import type { ServiceInfo } from '../api/client';
 
 interface Props {
+  services?: ServiceInfo[];
+  selectedServiceId?: number | null;
+  onSelectService?: (service: ServiceInfo) => void;
   serviceTitle: string;
   totalPrice: number;
   depositAmount: number;
@@ -16,6 +20,9 @@ interface Props {
 }
 
 export const ServiceCard: React.FC<Props> = ({
+  services = [],
+  selectedServiceId,
+  onSelectService,
   serviceTitle,
   totalPrice,
   depositAmount,
@@ -31,6 +38,68 @@ export const ServiceCard: React.FC<Props> = ({
 
   return (
     <div className="my-3 space-y-3">
+      {/* 0. Каталог услуг мастера */}
+      {services.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between px-0.5">
+            <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1">
+              <Sparkles className="w-3.5 h-3.5 text-blue-500" />
+              Выберите услугу
+            </span>
+            <span className="text-xs text-zinc-400">
+              {services.length} {services.length === 1 ? 'услуга' : services.length < 5 ? 'услуги' : 'услуг'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2">
+            {services.map((svc) => {
+              const isSelected = selectedServiceId === svc.id;
+              return (
+                <button
+                  key={svc.id}
+                  type="button"
+                  onClick={() => onSelectService?.(svc)}
+                  className={`flex items-center justify-between p-3 rounded-2xl border text-left transition-all duration-150 ${
+                    isSelected
+                      ? 'bg-blue-50/70 border-blue-600 shadow-xs ring-1 ring-blue-600/30'
+                      : 'bg-white hover:bg-zinc-50 border-zinc-200/80 shadow-2xs'
+                  }`}
+                >
+                  <div className="min-w-0 flex-1 pr-3">
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-xs sm:text-sm font-bold truncate ${
+                        isSelected ? 'text-blue-900' : 'text-zinc-800'
+                      }`}>
+                        {svc.title}
+                      </span>
+                    </div>
+                    {svc.duration_minutes > 0 && (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-zinc-400 mt-0.5">
+                        <Clock className="w-3 h-3" />
+                        {svc.duration_minutes} мин.
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className={`text-xs sm:text-sm font-extrabold ${
+                      isSelected ? 'text-blue-700' : 'text-zinc-900'
+                    }`}>
+                      {svc.price.toLocaleString('ru-RU')} ₽
+                    </span>
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center border transition ${
+                      isSelected ? 'bg-blue-600 border-blue-600 text-white' : 'border-zinc-300 bg-white'
+                    }`}>
+                      {isSelected && <CheckCircle2 className="w-3.5 h-3.5" />}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* 1. Карточка расчета стоимости */}
       <div className="p-3.5 bg-zinc-50 border border-zinc-200/80 rounded-2xl">
         <div className="flex items-start justify-between mb-2">

@@ -15,6 +15,16 @@ export const TimeSlotGrid: React.FC<Props> = ({
   isLoading,
   onSelectSlot
 }) => {
+  // Отсекаем слоты, время которых уже наступило (надежная клиентская защита от просроченных окон)
+  const now = new Date();
+  const validSlots = React.useMemo(() => {
+    return slots.filter((slot) => {
+      const slotStart = new Date(slot.start_time);
+      // Если слот сегодняшний и время уже наступило — скрываем
+      return slotStart.getTime() > now.getTime();
+    });
+  }, [slots]);
+
   if (isLoading) {
     return (
       <div className="my-3 w-full">
@@ -28,7 +38,7 @@ export const TimeSlotGrid: React.FC<Props> = ({
     );
   }
 
-  if (slots.length === 0) {
+  if (validSlots.length === 0) {
     return (
       <div className="my-4 py-8 px-4 bg-zinc-50 border border-dashed border-zinc-200 rounded-2xl text-center w-full">
         <CalendarX className="w-8 h-8 text-zinc-400 mx-auto mb-2" />
@@ -36,7 +46,7 @@ export const TimeSlotGrid: React.FC<Props> = ({
           Нет свободных окон
         </p>
         <p className="text-xs text-zinc-400 mt-1 max-w-[240px] mx-auto">
-          Все слоты на эту дату уже заняты. Выберите другой день в календаре.
+          Все слоты на эту дату уже заняты или их время прошло. Выберите другой день в календаре.
         </p>
       </div>
     );
@@ -50,12 +60,12 @@ export const TimeSlotGrid: React.FC<Props> = ({
           Свободное время
         </span>
         <span className="text-xs text-emerald-600 font-semibold">
-          {slots.length} {slots.length === 1 ? 'окно' : slots.length < 5 ? 'окна' : 'окон'}
+          {validSlots.length} {validSlots.length === 1 ? 'окно' : validSlots.length < 5 ? 'окна' : 'окон'}
         </span>
       </div>
 
       <div className="grid grid-cols-3 gap-2 w-full min-w-0">
-        {slots.map((slot) => {
+        {validSlots.map((slot) => {
           const isSelected = slot.id === selectedSlotId;
           const start = new Date(slot.start_time);
           const end = new Date(slot.end_time);

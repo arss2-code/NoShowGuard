@@ -47,11 +47,13 @@ async def send_appointment_reminders():
             if b.client_tg_id and b.slot and b.slot.master:
                 slot_time = b.slot.start_time.strftime("%d.%m.%Y в %H:%M")
                 clean_bot = settings.BOT_USERNAME.replace("@", "")
+                addr_line = f"📍 <b>Адрес:</b> {b.slot.master.address}\n" if b.slot.master.address else ""
                 msg = (
                     f"🔔 <b>Напоминание о записи!</b>\n\n"
                     f"Завтра в <b>{slot_time}</b> у вас запланирован сеанс.\n"
                     f"👤 <b>Мастер:</b> {b.slot.master.full_name}\n"
                     f"💇‍♀️ <b>Услуга:</b> {b.service_title}\n"
+                    f"{addr_line}"
                     f"💰 <b>Депозит:</b> {b.deposit_amount} ₽ учтен (доплата на месте: {max(0, b.service_price - b.deposit_amount)} ₽)\n\n"
                     f"Пожалуйста, подтвердите визит или предупредите об отмене.\n\n"
                     f"──────────────\n"
@@ -84,11 +86,13 @@ async def send_appointment_reminders():
             if b.client_tg_id and b.slot and b.slot.master:
                 slot_time = b.slot.start_time.strftime("%H:%M")
                 clean_bot = settings.BOT_USERNAME.replace("@", "")
+                addr_line = f"📍 <b>Адрес:</b> {b.slot.master.address}\n" if b.slot.master.address else ""
                 msg = (
                     f"⏳ <b>До вашего сеанса осталось 2 часа!</b>\n\n"
                     f"Ждем вас сегодня к <b>{slot_time}</b>.\n"
                     f"👤 <b>Мастер:</b> {b.slot.master.full_name}\n"
-                    f"💇‍♀️ <b>Услуга:</b> {b.service_title}\n\n"
+                    f"💇‍♀️ <b>Услуга:</b> {b.service_title}\n"
+                    f"{addr_line}\n"
                     f"Хорошего вам дня и отличного результата!\n\n"
                     f"──────────────\n"
                     f"🛡 <i>Запись через @{clean_bot}</i>"

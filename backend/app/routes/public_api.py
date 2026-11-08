@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models import Master, Slot, Booking, utc_now
+from app.models import Master, Slot, Booking, Service, utc_now
 from app.config import settings
 from app.schemas import (
     MasterResponse,
@@ -46,12 +46,27 @@ async def get_master_profile(
         db.add(master)
         await db.commit()
         await db.refresh(master)
+
+    # Гарантируем наличие хотя бы одной услуги по умолчанию
+    if not master.services:
+        default_svc = Service(
+            master_id=master.id,
+            title="Основная услуга / Сеанс",
+            price=2000,
+            duration_minutes=60,
+            is_active=True
+        )
+        db.add(default_svc)
+        await db.commit()
+        await db.refresh(master)
+
     return master
 
 @router.get("/masters/{tg_id}/slots", response_model=list[SlotResponse])
 async def get_master_slots(
     tg_id: int,
     date_query: date = Query(..., alias="date", description="Дата в формате YYYY-MM-DD"),
+    include_past: bool = Query(False, description="Включать ли прошедшие слоты за сегодня"),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -66,7 +81,7 @@ async def get_master_slots(
             detail="Мастер с указанным Telegram ID не найден"
         )
 
-    slots = await get_master_slots_by_date(db, tg_id, date_query)
+    slots = await get_master_slots_by_date(db, tg_id, date_query, include_past=include_past)
     return slots
 
 @router.post("/bookings/initiate", response_model=BookingInitiateResponse)

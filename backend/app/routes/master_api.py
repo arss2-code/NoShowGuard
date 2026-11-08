@@ -5,7 +5,7 @@ from sqlalchemy import select, and_, func, or_
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models import Master, Slot, SlotStatus, Booking, SubscriptionPayment, utc_now
+from app.models import Master, Slot, SlotStatus, Booking, SubscriptionPayment, Service, utc_now
 from app.schemas import (
     MasterDashboardResponse,
     MasterResponse,
@@ -14,7 +14,10 @@ from app.schemas import (
     MasterSettingsUpdate,
     SlotAddRequest,
     SubscriptionCheckoutRequest,
-    SubscriptionCheckoutResponse
+    SubscriptionCheckoutResponse,
+    ServiceCreate,
+    ServiceUpdate,
+    ServiceResponse
 )
 from app.services.payment import payment_service
 from app.config import settings
@@ -50,6 +53,19 @@ async def get_or_create_master_db(tg_id: int, db: AsyncSession, full_name: str =
         db.add(master)
         await db.commit()
         await db.refresh(master)
+
+    if not master.services:
+        default_svc = Service(
+            master_id=master.id,
+            title="Основная услуга / Сеанс",
+            price=2000,
+            duration_minutes=60,
+            is_active=True
+        )
+        db.add(default_svc)
+        await db.commit()
+        await db.refresh(master)
+
     return master
 
 @router.get("/{tg_id}/dashboard", response_model=MasterDashboardResponse)
@@ -166,7 +182,8 @@ async def get_master_dashboard(
         subscription_active=subscription_active,
         digest_enabled=master.digest_enabled,
         digest_time=master.digest_time,
-        slots=slots_result
+        slots=slots_result,
+        services=[ServiceResponse.model_validate(svc) for svc in master.services if svc.is_active]
     )
 
 @router.post("/{tg_id}/slots", status_code=status.HTTP_201_CREATED)
@@ -295,13 +312,19 @@ async def update_settings(
     payload: MasterSettingsUpdate,
     db: AsyncSession = Depends(get_db)
 ):
-    """Обновление настроек мастера: депозит, профессия, утренний дайджест."""
+    """Обновление настроек мастера: ФИО, салон, адрес, депозит, профессия, утренний дайджест."""
     master = await get_master_or_404(tg_id, db)
 
+    if payload.full_name is not None and payload.full_name.strip():
+        master.full_name = payload.full_name.strip()
+    if payload.profession is not None and payload.profession.strip():
+        master.profession = payload.profession.strip()
+    if payload.salon_name is not None:
+        master.salon_name = payload.salon_name.strip() or None
+    if payload.address is not None:
+        master.address = payload.address.strip() or None
     if payload.deposit_amount is not None:
         master.deposit_amount = payload.deposit_amount
-    if payload.profession is not None:
-        master.profession = payload.profession
     if payload.digest_enabled is not None:
         master.digest_enabled = payload.digest_enabled
     if payload.digest_time is not None:
@@ -310,6 +333,79 @@ async def update_settings(
     await db.commit()
     await db.refresh(master)
     return {"message": "Настройки успешно сохранены", "master": MasterResponse.model_validate(master)}
+
+@router.get("/{tg_id}/services", response_model=list[ServiceResponse])
+async def get_master_services(
+    tg_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Получение каталога услуг мастера."""
+    master = await get_master_or_404(tg_id, db)
+    return [ServiceResponse.model_validate(s) for s in master.services if s.is_active]
+
+@router.post("/{tg_id}/services", response_model=ServiceResponse, status_code=status.HTTP_201_CREATED)
+async def create_master_service(
+    tg_id: int,
+    payload: ServiceCreate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Добавление новой услуги в прайс-лист мастера."""
+    master = await get_master_or_404(tg_id, db)
+    new_svc = Service(
+        master_id=master.id,
+        title=payload.title.strip(),
+        price=payload.price,
+        duration_minutes=payload.duration_minutes,
+        is_active=True
+    )
+    db.add(new_svc)
+    await db.commit()
+    await db.refresh(new_svc)
+    return ServiceResponse.model_validate(new_svc)
+
+@router.patch("/{tg_id}/services/{service_id}", response_model=ServiceResponse)
+async def update_master_service(
+    tg_id: int,
+    service_id: int,
+    payload: ServiceUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Редактирование услуги мастера."""
+    master = await get_master_or_404(tg_id, db)
+    stmt = select(Service).where(and_(Service.id == service_id, Service.master_id == master.id))
+    svc = (await db.execute(stmt)).scalar_one_or_none()
+    if not svc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Услуга не найдена")
+
+    if payload.title is not None and payload.title.strip():
+        svc.title = payload.title.strip()
+    if payload.price is not None:
+        svc.price = payload.price
+    if payload.duration_minutes is not None:
+        svc.duration_minutes = payload.duration_minutes
+    if payload.is_active is not None:
+        svc.is_active = payload.is_active
+
+    await db.commit()
+    await db.refresh(svc)
+    return ServiceResponse.model_validate(svc)
+
+@router.delete("/{tg_id}/services/{service_id}")
+async def delete_master_service(
+    tg_id: int,
+    service_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Удаление услуги мастера."""
+    master = await get_master_or_404(tg_id, db)
+    stmt = select(Service).where(and_(Service.id == service_id, Service.master_id == master.id))
+    svc = (await db.execute(stmt)).scalar_one_or_none()
+    if not svc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Услуга не найдена")
+
+    await db.delete(svc)
+    await db.commit()
+    return {"message": "Услуга успешно удалена"}
 
 @router.post("/{tg_id}/subscription/checkout", response_model=SubscriptionCheckoutResponse)
 async def checkout_subscription(

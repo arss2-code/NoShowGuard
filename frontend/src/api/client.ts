@@ -1,9 +1,20 @@
+export interface ServiceInfo {
+  id: number;
+  master_id: number;
+  title: string;
+  price: number;
+  duration_minutes: number;
+  is_active: boolean;
+}
+
 export interface MasterInfo {
   id: number;
   tg_id: number;
   full_name: string;
   username?: string;
   profession: string;
+  salon_name?: string;
+  address?: string;
   deposit_amount: number;
   is_active: boolean;
   trial_ends_at?: string;
@@ -11,6 +22,7 @@ export interface MasterInfo {
   subscription_active_until?: string;
   digest_enabled?: boolean;
   digest_time?: string;
+  services?: ServiceInfo[];
 }
 
 export interface SlotInfo {
@@ -90,6 +102,7 @@ export interface MasterDashboardData {
   digest_enabled: boolean;
   digest_time: string;
   slots: MasterDashboardSlot[];
+  services: ServiceInfo[];
 }
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
@@ -190,9 +203,19 @@ export async function deleteMasterSlot(tgId: number | string, slotId: number): P
   }
 }
 
+export interface MasterSettingsPayload {
+  full_name?: string;
+  profession?: string;
+  salon_name?: string;
+  address?: string;
+  deposit_amount?: number;
+  digest_enabled?: boolean;
+  digest_time?: string;
+}
+
 export async function updateMasterSettings(
   tgId: number | string, 
-  settings: { deposit_amount?: number; profession?: string; digest_enabled?: boolean; digest_time?: string }
+  settings: MasterSettingsPayload
 ): Promise<void> {
   const res = await fetch(`${API_BASE}/api/masters/${tgId}/settings`, {
     method: 'PATCH',
@@ -200,6 +223,55 @@ export async function updateMasterSettings(
     body: JSON.stringify(settings)
   });
   if (!res.ok) throw new Error('Не удалось обновить настройки');
+}
+
+export async function fetchMasterServices(masterTgId: number | string): Promise<ServiceInfo[]> {
+  const res = await fetch(`${API_BASE}/api/masters/${masterTgId}/services`);
+  if (!res.ok) throw new Error('Не удалось загрузить услуги мастера');
+  return res.json();
+}
+
+export async function createMasterService(
+  masterTgId: number | string,
+  payload: { title: string; price: number; duration_minutes: number }
+): Promise<ServiceInfo> {
+  const res = await fetch(`${API_BASE}/api/masters/${masterTgId}/services`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Не удалось добавить услугу');
+  }
+  return res.json();
+}
+
+export async function updateMasterService(
+  masterTgId: number | string,
+  serviceId: number,
+  payload: { title?: string; price?: number; duration_minutes?: number; is_active?: boolean }
+): Promise<ServiceInfo> {
+  const res = await fetch(`${API_BASE}/api/masters/${masterTgId}/services/${serviceId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Не удалось обновить услугу');
+  }
+  return res.json();
+}
+
+export async function deleteMasterService(masterTgId: number | string, serviceId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/masters/${masterTgId}/services/${serviceId}`, {
+    method: 'DELETE'
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Не удалось удалить услугу');
+  }
 }
 
 export async function checkoutSubscription(

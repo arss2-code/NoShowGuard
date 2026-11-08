@@ -97,10 +97,13 @@ async def test_master_dashboard_and_settings(client, db_session):
     assert data["digest_enabled"] is True
     assert data["digest_time"] == "09:00"
 
-    # 2. Обновляем настройки (изменяем депозит и время дайджеста)
+    # 2. Обновляем настройки (изменяем депозит, ФИО, салон, адрес и время дайджеста)
     patch_res = await client.patch(
         f"/api/masters/{master.tg_id}/settings",
         json={
+            "full_name": "Анна Красота",
+            "salon_name": "Студия Эстетик",
+            "address": "ул. Ленина, д. 5, оф. 12",
             "deposit_amount": 300,
             "digest_enabled": False,
             "digest_time": "10:30"
@@ -108,6 +111,9 @@ async def test_master_dashboard_and_settings(client, db_session):
     )
     assert patch_res.status_code == 200
     updated = patch_res.json()["master"]
+    assert updated["full_name"] == "Анна Красота"
+    assert updated["salon_name"] == "Студия Эстетик"
+    assert updated["address"] == "ул. Ленина, д. 5, оф. 12"
     assert updated["deposit_amount"] == 300
     assert updated["digest_enabled"] is False
     assert updated["digest_time"] == "10:30"
@@ -176,4 +182,53 @@ async def test_subscription_checkout_and_simulation(client, db_session):
     )
     assert sim_res.status_code == 200
     assert "успешно активирована" in sim_res.json()["message"]
+
+@pytest.mark.asyncio
+async def test_master_services_management(client, db_session):
+    """Проверка создания, редактирования, получения и удаления услуг мастера."""
+    master = Master(
+        tg_id=888004,
+        full_name="Ольга Мастер",
+        deposit_amount=300
+    )
+    db_session.add(master)
+    await db_session.commit()
+
+    # 1. Добавление новой услуги
+    create_res = await client.post(
+        f"/api/masters/{master.tg_id}/services",
+        json={
+            "title": "Маникюр + гель-лак",
+            "price": 2500,
+            "duration_minutes": 90
+        }
+    )
+    assert create_res.status_code == 201
+    svc = create_res.json()
+    assert svc["title"] == "Маникюр + гель-лак"
+    assert svc["price"] == 2500
+    assert svc["duration_minutes"] == 90
+    svc_id = svc["id"]
+
+    # 2. Список услуг
+    list_res = await client.get(f"/api/masters/{master.tg_id}/services")
+    assert list_res.status_code == 200
+    services = list_res.json()
+    assert len(services) >= 1
+    assert any(s["id"] == svc_id for s in services)
+
+    # 3. Редактирование услуги
+    patch_res = await client.patch(
+        f"/api/masters/{master.tg_id}/services/{svc_id}",
+        json={"price": 2800}
+    )
+    assert patch_res.status_code == 200
+    assert patch_res.json()["price"] == 2800
+
+    # 4. Удаление услуги
+    del_res = await client.delete(f"/api/masters/{master.tg_id}/services/{svc_id}")
+    assert del_res.status_code == 200
+
+    list_res_after = await client.get(f"/api/masters/{master.tg_id}/services")
+    assert not any(s["id"] == svc_id for s in list_res_after.json())
 

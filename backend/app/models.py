@@ -22,6 +22,8 @@ class Master(Base):
     full_name = Column(String(100), nullable=False)
     username = Column(String(50), nullable=True)
     profession = Column(String(100), default="Мастер услуг")
+    salon_name = Column(String(150), nullable=True)  # Название салона / студии
+    address = Column(String(255), nullable=True)     # Адрес приёма клиентов
     deposit_amount = Column(Integer, default=300)  # Размер депозита (300/500 ₽)
     trial_ends_at = Column(DateTime, nullable=True)  # 7-дневный триал
     subscription_tier = Column(String(20), default="trial", nullable=False)  # trial, start, pro, expired
@@ -34,6 +36,20 @@ class Master(Base):
     created_at = Column(DateTime, default=utc_now, nullable=False)
 
     slots = relationship("Slot", back_populates="master", cascade="all, delete-orphan")
+    services = relationship("Service", back_populates="master", cascade="all, delete-orphan", lazy="selectin")
+
+class Service(Base):
+    __tablename__ = "services"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    master_id = Column(Integer, ForeignKey("masters.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(150), nullable=False)
+    price = Column(Integer, nullable=False)
+    duration_minutes = Column(Integer, default=60, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+
+    master = relationship("Master", back_populates="services")
 
 class Slot(Base):
     __tablename__ = "slots"

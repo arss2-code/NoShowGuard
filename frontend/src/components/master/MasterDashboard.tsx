@@ -177,10 +177,14 @@ export const MasterDashboard: React.FC<MasterDashboardProps> = ({ masterTgId }) 
       {activeTab === 'settings' && (
         <MasterSettings
           masterTgId={masterTgId}
+          initialFullName={data.master.full_name}
+          initialSalonName={data.master.salon_name || ''}
+          initialAddress={data.master.address || ''}
           initialDeposit={data.master.deposit_amount}
           initialProfession={data.master.profession}
           initialDigestEnabled={data.digest_enabled}
           initialDigestTime={data.digest_time}
+          services={data.services || data.master.services || []}
           onRefresh={loadData}
         />
       )}

@@ -19,7 +19,8 @@ import {
 import type {
   MasterInfo,
   SlotInfo,
-  BookingInitiateResult
+  BookingInitiateResult,
+  ServiceInfo
 } from './api/client';
 
 export default function App() {
@@ -86,9 +87,22 @@ export default function App() {
     slot: SlotInfo;
   } | null>(null);
 
+  const [selectedService, setSelectedService] = useState<ServiceInfo | null>(null);
+
+  // Автоматический выбор первой активной услуги из прайс-листа мастера
+  useEffect(() => {
+    if (master?.services && master.services.length > 0) {
+      setSelectedService((prev) => {
+        if (!prev) return master.services![0];
+        const exists = master.services!.find(s => s.id === prev.id);
+        return exists || master.services![0];
+      });
+    }
+  }, [master]);
+
   const depositAmount = master?.deposit_amount ?? 300;
-  const serviceTitle = 'Комплексный уход / Сеанс';
-  const servicePrice = 2000;
+  const serviceTitle = selectedService?.title || 'Комплексный уход / Сеанс';
+  const servicePrice = selectedService?.price || 2000;
 
   // 1. Загрузка данных мастера
   useEffect(() => {
@@ -398,9 +412,12 @@ export default function App() {
                   onSelectSlot={handleSelectSlot}
                 />
 
-                {selectedSlot && (
+                 {selectedSlot && (
                   <div className="animate-in fade-in slide-in-from-bottom-3 duration-200 w-full">
                     <ServiceCard
+                      services={master?.services || []}
+                      selectedServiceId={selectedService?.id ?? null}
+                      onSelectService={(svc) => setSelectedService(svc)}
                       serviceTitle={serviceTitle}
                       totalPrice={servicePrice}
                       depositAmount={depositAmount}

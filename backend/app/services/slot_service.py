@@ -30,12 +30,23 @@ async def release_expired_slots(db: AsyncSession) -> int:
 async def get_master_slots_by_date(
     db: AsyncSession,
     master_tg_id: int,
-    target_date: date
+    target_date: date,
+    include_past: bool = False
 ) -> list[Slot]:
-    """Возвращает свободные слоты мастера на указанную дату."""
+    """Возвращает свободные слоты мастера на указанную дату.
+    Для сегодняшней даты по умолчанию отсекает прошедшие слоты.
+    """
     await release_expired_slots(db)
 
+    now = datetime.now()
+    if target_date < now.date() and not include_past:
+        return []
+
     start_dt = datetime.combine(target_date, time.min)
+    if target_date == now.date() and not include_past:
+        # Отсекаем слоты, время которых уже наступило
+        start_dt = max(start_dt, now)
+
     end_dt = datetime.combine(target_date, time.max)
 
     stmt = (
@@ -288,11 +299,19 @@ async def send_booking_confirmed_notifications(
     # 2. Подтверждение клиенту с кнопкой WebApp «Мои записи»
     if booking.client_tg_id:
         clean_bot = settings.BOT_USERNAME.replace("@", "")
+        loc_lines = []
+        if master.salon_name:
+            loc_lines.append(f"🏢 <b>Салон/студия:</b> {master.salon_name}")
+        if master.address:
+            loc_lines.append(f"📍 <b>Адрес приёма:</b> {master.address}")
+        location_str = ("\n" + "\n".join(loc_lines)) if loc_lines else ""
+
         client_msg = (
             f"✅ <b>Ваша запись успешно подтверждена!</b>\n\n"
             f"👤 <b>Мастер:</b> {master.full_name}\n"
             f"📅 <b>Дата и время:</b> {start_time_str}\n"
             f"💇‍♀️ <b>Услуга:</b> {booking.service_title}\n"
+            f"{location_str}"
             f"🛡 <b>Гарантийный депозит:</b> {booking.deposit_amount} ₽ внесен через СБП.\n"
             f"💵 <b>К оплате на месте:</b> {remaining_price} ₽\n\n"
             f"Ждем вас вовремя! Накануне сеанса мы пришлем напоминание.\n\n"

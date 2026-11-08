@@ -43,3 +43,21 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+        # Безопасная автомиграция для SQLite при добавлении новых полей
+        if settings.DATABASE_URL.startswith("sqlite"):
+            def migrate_columns(connection):
+                cursor = connection.cursor()
+                try:
+                    cursor.execute("PRAGMA table_info(masters)")
+                    existing_cols = [row[1] for row in cursor.fetchall()]
+                    if existing_cols and "salon_name" not in existing_cols:
+                        cursor.execute("ALTER TABLE masters ADD COLUMN salon_name VARCHAR(150)")
+                    if existing_cols and "address" not in existing_cols:
+                        cursor.execute("ALTER TABLE masters ADD COLUMN address VARCHAR(255)")
+                except Exception:
+                    pass
+                finally:
+                    cursor.close()
+
+            await conn.run_sync(migrate_columns)

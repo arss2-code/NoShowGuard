@@ -27,10 +27,10 @@ async def test_get_master_slots(client: AsyncClient, db_session: AsyncSession):
     await db_session.commit()
     await db_session.refresh(master)
 
-    # 2. Создаем свободный слот
-    today = date.today()
-    slot_start = datetime.combine(today, time(12, 0))
-    slot_end = datetime.combine(today, time(13, 30))
+    # 2. Создаем свободный слот на завтра
+    tomorrow = date.today() + timedelta(days=1)
+    slot_start = datetime.combine(tomorrow, time(12, 0))
+    slot_end = datetime.combine(tomorrow, time(13, 30))
     slot = Slot(
         master_id=master.id,
         start_time=slot_start,
@@ -41,7 +41,7 @@ async def test_get_master_slots(client: AsyncClient, db_session: AsyncSession):
     await db_session.commit()
 
     # 3. Запрашиваем слоты через API
-    response = await client.get(f"/api/masters/{master.tg_id}/slots?date={today.isoformat()}")
+    response = await client.get(f"/api/masters/{master.tg_id}/slots?date={tomorrow.isoformat()}")
     assert response.status_code == 200
     slots_data = response.json()
     assert len(slots_data) == 1

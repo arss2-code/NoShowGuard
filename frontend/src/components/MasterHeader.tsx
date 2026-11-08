@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, Sparkles } from 'lucide-react';
+import { ShieldCheck, Sparkles, MapPin, Building2 } from 'lucide-react';
 import type { MasterInfo } from '../api/client';
 
 interface Props {
@@ -24,36 +24,56 @@ export const MasterHeader: React.FC<Props> = ({ master, isLoading }) => {
   const profession = master?.profession || 'Частный специалист';
   const initials = name
     .split(' ')
+    .filter(Boolean)
     .map((n) => n[0])
     .slice(0, 2)
     .join('')
     .toUpperCase();
 
   return (
-    <div className="flex items-center justify-between gap-2.5 p-3 sm:p-3.5 bg-gradient-to-r from-zinc-50 to-zinc-100/70 border border-zinc-200/80 rounded-2xl shadow-xs w-full overflow-hidden">
-      <div className="flex items-center gap-2.5 min-w-0 flex-1">
-        <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-blue-600 text-white font-semibold flex items-center justify-center text-xs sm:text-sm shadow-sm ring-2 ring-blue-100 flex-shrink-0">
-          {initials || <Sparkles className="w-4 h-4" />}
+    <div className="p-3 sm:p-3.5 bg-gradient-to-r from-zinc-50 to-zinc-100/70 border border-zinc-200/80 rounded-2xl shadow-xs w-full overflow-hidden space-y-2">
+      <div className="flex items-center justify-between gap-2.5">
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-blue-600 text-white font-semibold flex items-center justify-center text-xs sm:text-sm shadow-sm ring-2 ring-blue-100 flex-shrink-0">
+            {initials || <Sparkles className="w-4 h-4" />}
+          </div>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-sm sm:text-base font-bold text-zinc-900 leading-tight truncate">
+              {name}
+            </h1>
+            <p className="text-[11px] sm:text-xs text-zinc-500 font-medium truncate mt-0.5">
+              {profession}
+            </p>
+          </div>
         </div>
-        <div className="min-w-0 flex-1">
-          <h1 className="text-sm sm:text-base font-bold text-zinc-900 leading-tight truncate">
-            {name}
-          </h1>
-          <p className="text-[11px] sm:text-xs text-zinc-500 font-medium truncate mt-0.5">
-            {profession}
-          </p>
+
+        <div className="flex flex-col items-end flex-shrink-0">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[10px] sm:text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60 shadow-xs whitespace-nowrap">
+            <ShieldCheck className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-600 flex-shrink-0" />
+            Гарантия СБП
+          </span>
+          <span className="text-[10px] text-zinc-400 mt-0.5 whitespace-nowrap">
+            Депозит {master?.deposit_amount ?? 300} ₽
+          </span>
         </div>
       </div>
 
-      <div className="flex flex-col items-end flex-shrink-0">
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[10px] sm:text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60 shadow-xs whitespace-nowrap">
-          <ShieldCheck className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-600 flex-shrink-0" />
-          Гарантия СБП
-        </span>
-        <span className="text-[10px] text-zinc-400 mt-0.5 whitespace-nowrap">
-          Депозит {master?.deposit_amount ?? 300} ₽
-        </span>
-      </div>
+      {(master?.salon_name || master?.address) && (
+        <div className="pt-2 border-t border-zinc-200/50 flex flex-wrap items-center gap-2 text-[11px] text-zinc-600">
+          {master.salon_name && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-zinc-200/70 rounded-lg font-medium shadow-2xs">
+              <Building2 className="w-3 h-3 text-zinc-500 shrink-0" />
+              <span className="truncate max-w-[150px]">{master.salon_name}</span>
+            </span>
+          )}
+          {master.address && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-zinc-200/70 rounded-lg text-zinc-600 font-normal shadow-2xs">
+              <MapPin className="w-3 h-3 text-rose-500 shrink-0" />
+              <span className="truncate max-w-[200px]">{master.address}</span>
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 };
