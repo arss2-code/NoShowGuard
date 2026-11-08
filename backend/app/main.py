@@ -106,7 +106,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="NoShowGuard API",
     description="Микро-SaaS для ликвидации неявок клиентов мастеров услуг за счет сбора СБП-депозитов",
-    version="1.3.0",
+    version="1.3.1",
     lifespan=lifespan
 )
 
