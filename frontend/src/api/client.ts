@@ -226,3 +226,75 @@ export async function simulateSubscriptionSuccess(
   });
   if (!res.ok) throw new Error('Не удалось продлить тестовую подписку');
 }
+
+export interface ClientBookingItem {
+  id: number;
+  slot_id: number;
+  master_name: string;
+  master_profession: string;
+  service_title: string;
+  service_price: number;
+  deposit_amount: number;
+  start_time: string;
+  end_time: string;
+  slot_status: string;
+  payment_status: string;
+  hours_until_start: number;
+  can_cancel_with_refund: boolean;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface CancelBookingResult {
+  success: boolean;
+  refunded: boolean;
+  hours_left: number;
+  message: string;
+}
+
+export async function fetchMyBookings(
+  clientTgId?: number,
+  clientPhone?: string,
+  bookingIds?: number[]
+): Promise<ClientBookingItem[]> {
+  const params = new URLSearchParams();
+  if (clientTgId && clientTgId !== 999999) {
+    params.set('client_tg_id', String(clientTgId));
+  }
+  if (clientPhone) {
+    params.set('client_phone', clientPhone);
+  }
+  if (bookingIds && bookingIds.length > 0) {
+    params.set('booking_ids', bookingIds.join(','));
+  }
+
+  const queryStr = params.toString();
+  if (!queryStr) return [];
+
+  const res = await fetch(`${API_BASE}/api/bookings/my?${queryStr}`);
+  if (!res.ok) throw new Error('Не удалось загрузить ваши записи');
+  return res.json();
+}
+
+export async function cancelClientBooking(bookingId: number): Promise<CancelBookingResult> {
+  const res = await fetch(`${API_BASE}/api/bookings/${bookingId}/cancel`, {
+    method: 'POST'
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Не удалось отменить запись');
+  }
+  return res.json();
+}
+
+export async function markSlotNoShow(masterTgId: number | string, slotId: number): Promise<{ saved_deposit: number }> {
+  const res = await fetch(`${API_BASE}/api/masters/${masterTgId}/slots/${slotId}/no-show`, {
+    method: 'POST'
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Не удалось зафиксировать неявку');
+  }
+  return res.json();
+}
+

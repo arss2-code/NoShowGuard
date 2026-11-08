@@ -365,3 +365,59 @@ async def simulate_subscription_success(
         "message": f"Подписка «{tier.upper()}» успешно активирована на {days_to_add} дн.",
         "active_until": master.subscription_active_until
     }
+
+
+@router.post("/{tg_id}/slots/{slot_id}/no-show")
+async def mark_slot_no_show(
+    tg_id: int,
+    slot_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Фиксация неявки клиента (No-Show) мастером прямо из веб-кабинета.
+    Переводит слот в COMPLETED, а депозит в no_show_retained (ст. 381.1 ГК РФ).
+    """
+    master = await get_master_or_404(tg_id, db)
+    stmt = (
+        select(Slot)
+        .options(selectinload(Slot.booking))
+        .where(
+            and_(
+                Slot.id == slot_id,
+                Slot.master_id == master.id
+            )
+        )
+    )
+    slot = (await db.execute(stmt)).scalar_one_or_none()
+    if not slot:
+        raise HTTPException(status_code=404, detail="Слот не найден")
+
+    if not slot.booking:
+        raise HTTPException(status_code=400, detail="На данный слот нет бронирования")
+
+    deposit = slot.booking.deposit_amount
+    slot.status = SlotStatus.COMPLETED
+    slot.booking.payment_status = "no_show_retained"
+    await db.commit()
+
+    # Уведомление в Telegram бота мастера
+    from app.bot.bot_instance import safe_send_message
+    await safe_send_message(
+        chat_id=master.tg_id,
+        text=(
+            f"⚠️ <b>Зафиксирована неявка (No-Show)!</b>\n\n"
+            f"Клиент: <b>{slot.booking.client_name}</b>\n"
+            f"Сеанс: <b>{slot.start_time.strftime('%d.%m.%Y в %H:%M')}</b>\n"
+            f"Сумма депозита <b>{deposit} ₽</b> удержана в вашу пользу (ст. 381.1 ГК РФ) "
+            f"и зачислена в спасенную выручку."
+        )
+    )
+
+    return {
+        "success": True,
+        "message": f"Неявка зафиксирована. Депозит {deposit} ₽ удержан по ст. 381.1 ГК РФ.",
+        "slot_id": slot.id,
+        "status": slot.status.value,
+        "saved_deposit": deposit
+    }
+

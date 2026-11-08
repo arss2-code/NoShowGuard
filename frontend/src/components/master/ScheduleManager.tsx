@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Plus, Trash2, Clock, User, Phone, CheckCircle2, AlertTriangle, Sparkles } from 'lucide-react';
+import { Plus, Trash2, Clock, User, Phone, CheckCircle2, AlertTriangle, Sparkles, UserX } from 'lucide-react';
 import type { MasterDashboardSlot } from '../../api/client';
-import { addMasterSlot, generateStandardSlots, deleteMasterSlot } from '../../api/client';
+import { addMasterSlot, generateStandardSlots, deleteMasterSlot, markSlotNoShow } from '../../api/client';
 
 interface ScheduleManagerProps {
   masterTgId: number;
@@ -72,6 +72,27 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ masterTgId, sl
       onRefresh();
     } catch (err: any) {
       alert(err.message || 'Не удалось удалить слот');
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
+  const handleNoShow = async (slotId: number, clientName?: string) => {
+    const confirmed = window.confirm(
+      `Зафиксировать неявку клиента "${clientName || 'Клиент'}"?\n\n` +
+      `• Депозит мастера удерживается как компенсация фактически понесенных расходов (ст. 381.1 ГК РФ).\n` +
+      `• Слот будет завершен со статусом No-Show.\n` +
+      `• В статистику мастера запишется спасенный доход.`
+    );
+    if (!confirmed) return;
+
+    setLoadingAction(true);
+    try {
+      const res = await markSlotNoShow(masterTgId, slotId);
+      alert(`Неявка зафиксирована! Депозит ${res.saved_deposit} ₽ сохранен за вами.`);
+      onRefresh();
+    } catch (err: any) {
+      alert(err.message || 'Ошибка фиксации неявки');
     } finally {
       setLoadingAction(false);
     }
@@ -190,20 +211,24 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ masterTgId, sl
             const isBooked = s.status === 'booked';
             const isPending = s.status === 'pending_payment';
             const isFree = s.status === 'free';
+            const isCompleted = s.status === 'completed';
+            const isNoShow = isCompleted && s.booking?.payment_status === 'no_show_retained';
 
             return (
               <div
                 key={s.id}
-                className={`p-3.5 rounded-2xl border transition flex items-center justify-between ${
+                className={`p-3.5 rounded-2xl border transition space-y-2 ${
                   isBooked
                     ? 'bg-rose-50/60 border-rose-200/80'
                     : isPending
                     ? 'bg-amber-50/60 border-amber-200/80'
+                    : isNoShow
+                    ? 'bg-zinc-100/80 border-zinc-300'
                     : 'bg-white border-gray-200 shadow-2xs'
                 }`}
               >
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 flex-wrap min-w-0">
                     <span className="font-bold text-sm text-gray-900 flex items-center gap-1">
                       <Clock className="w-3.5 h-3.5 text-gray-400" />
                       {startStr} – {endStr}
@@ -216,8 +241,8 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ masterTgId, sl
                     )}
                     {isBooked && (
                       <span className="px-2 py-0.5 bg-rose-100 text-rose-700 rounded-full text-[10px] font-semibold flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" />
-                        Занято (Депозит внесен)
+                        <CheckCircle2 className="w-3 h-3 shrink-0" />
+                        Занято (Депозит)
                       </span>
                     )}
                     {isPending && (
@@ -225,33 +250,54 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({ masterTgId, sl
                         Оплата СБП...
                       </span>
                     )}
+                    {isNoShow && (
+                      <span className="px-2 py-0.5 bg-zinc-200 text-zinc-700 rounded-full text-[10px] font-semibold flex items-center gap-1">
+                        <UserX className="w-3 h-3 text-rose-600 shrink-0" />
+                        Неявка (Депозит)
+                      </span>
+                    )}
                   </div>
 
-                  {(isBooked || isPending) && s.booking && (
-                    <div className="text-xs text-gray-600 flex flex-wrap gap-x-3 gap-y-1 pt-0.5">
-                      <span className="flex items-center gap-1 font-medium text-gray-800">
-                        <User className="w-3 h-3 text-gray-400" />
-                        {s.booking.client_name}
-                      </span>
-                      <span className="flex items-center gap-1 text-gray-500">
-                        <Phone className="w-3 h-3 text-gray-400" />
-                        {s.booking.client_phone}
-                      </span>
-                      <span className="text-gray-500">
-                        • {s.booking.service_title}
-                      </span>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {isBooked && (
+                      <button
+                        type="button"
+                        onClick={() => handleNoShow(s.id, s.booking?.client_name)}
+                        disabled={loadingAction}
+                        className="px-2.5 py-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-xl text-xs font-semibold flex items-center gap-1 transition active:scale-95 disabled:opacity-50"
+                        title="Зафиксировать неявку клиента (ст. 381.1 ГК РФ)"
+                      >
+                        <UserX className="w-3.5 h-3.5 text-rose-600" />
+                        <span>Не явился</span>
+                      </button>
+                    )}
+
+                    {isFree && (
+                      <button
+                        onClick={() => handleDelete(s.id)}
+                        className="p-1.5 text-gray-400 hover:text-rose-600 rounded-xl hover:bg-rose-50 transition"
+                        title="Удалить свободный слот"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
-                {isFree && (
-                  <button
-                    onClick={() => handleDelete(s.id)}
-                    className="p-2 text-gray-400 hover:text-rose-600 rounded-xl hover:bg-rose-50 transition"
-                    title="Удалить свободный слот"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                {(isBooked || isPending || isNoShow) && s.booking && (
+                  <div className="text-xs text-gray-600 flex flex-wrap gap-x-3 gap-y-1 pt-1.5 border-t border-rose-200/60">
+                    <span className="flex items-center gap-1 font-medium text-gray-800">
+                      <User className="w-3 h-3 text-gray-400" />
+                      {s.booking.client_name}
+                    </span>
+                    <span className="flex items-center gap-1 text-gray-500">
+                      <Phone className="w-3 h-3 text-gray-400" />
+                      {s.booking.client_phone}
+                    </span>
+                    <span className="text-gray-500">
+                      • {s.booking.service_title}
+                    </span>
+                  </div>
                 )}
               </div>
             );

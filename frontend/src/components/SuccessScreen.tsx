@@ -10,6 +10,7 @@ interface Props {
   servicePrice: number;
   depositAmount: number;
   onClose: () => void;
+  onViewBookings?: () => void;
 }
 
 export const SuccessScreen: React.FC<Props> = ({
@@ -20,7 +21,8 @@ export const SuccessScreen: React.FC<Props> = ({
   serviceTitle,
   servicePrice,
   depositAmount,
-  onClose
+  onClose,
+  onViewBookings
 }) => {
   const start = new Date(slotStartTime);
   const end = new Date(slotEndTime);
@@ -115,13 +117,24 @@ export const SuccessScreen: React.FC<Props> = ({
         </p>
       </div>
 
-      <button
-        type="button"
-        onClick={onClose}
-        className="w-full py-3.5 px-4 bg-zinc-900 hover:bg-black text-white font-semibold rounded-2xl transition-all shadow-md active:scale-[0.99] text-sm mt-4"
-      >
-        Вернуться в Telegram
-      </button>
+      <div className="space-y-2 mt-4">
+        {onViewBookings && (
+          <button
+            type="button"
+            onClick={onViewBookings}
+            className="w-full py-3.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-2xl transition shadow-md active:scale-[0.99] text-sm flex items-center justify-center gap-2"
+          >
+            <span>🎟️ Посмотреть в «Моих записях»</span>
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-full py-3 px-4 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-semibold rounded-2xl transition text-sm"
+        >
+          Вернуться в Telegram
+        </button>
+      </div>
     </div>
   );
 };

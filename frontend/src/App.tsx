@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useTransition, useMemo } from 'react';
-import { Shield, AlertCircle, ArrowRight, Loader2, UserCheck, Crown } from 'lucide-react';
+import { Shield, AlertCircle, ArrowRight, Loader2, UserCheck, Crown, CalendarCheck, Ticket } from 'lucide-react';
 import { useTelegram } from './hooks/useTelegram';
 import { MasterHeader } from './components/MasterHeader';
 import { DateCarousel } from './components/DateCarousel';
@@ -8,6 +8,7 @@ import { ServiceCard } from './components/ServiceCard';
 import { SuccessScreen } from './components/SuccessScreen';
 import { OfferModal } from './components/legal/OfferModal';
 import { MasterDashboard } from './components/master/MasterDashboard';
+import { MyBookingsView } from './components/client/MyBookingsView';
 import { isValidPhoneNumber } from './utils/phone';
 import {
   fetchMaster,
@@ -33,6 +34,10 @@ export default function App() {
   }, [tg]);
 
   const [currentRole, setCurrentRole] = useState<'client' | 'master'>(initialRole);
+  const [clientTab, setClientTab] = useState<'booking' | 'my-bookings'>(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('tab') === 'my-bookings' ? 'my-bookings' : 'booking';
+  });
 
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     return new Date().toISOString().split('T')[0];
@@ -43,7 +48,10 @@ export default function App() {
   const [selectedSlot, setSelectedSlot] = useState<SlotInfo | null>(null);
 
   const [clientName, setClientName] = useState(user.fullName || 'Гость');
-  const [clientPhone, setClientPhone] = useState('');
+  const [clientPhone, setClientPhone] = useState(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('phone') || '';
+  });
   const [termsAccepted, setTermsAccepted] = useState(true);
   const [isOfferOpen, setIsOfferOpen] = useState(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -168,6 +176,18 @@ export default function App() {
         console.warn('Автоподтверждение не удалось:', err);
       }
 
+      // Сохраняем booking_id в localStorage для вкладки «Мои записи»
+      try {
+        const localIdsRaw = localStorage.getItem('noshowguard_client_booking_ids');
+        const localIds: number[] = localIdsRaw ? JSON.parse(localIdsRaw) : [];
+        if (!localIds.includes(result.booking_id)) {
+          localIds.push(result.booking_id);
+          localStorage.setItem('noshowguard_client_booking_ids', JSON.stringify(localIds));
+        }
+      } catch (e) {
+        console.warn('Ошибка сохранения booking_id в localStorage:', e);
+      }
+
       setSuccessBooking({
         booking: result,
         slot: selectedSlot
@@ -187,7 +207,7 @@ export default function App() {
   useEffect(() => {
     if (!mainButton) return;
 
-    if (currentRole === 'client' && selectedSlot && !successBooking) {
+    if (currentRole === 'client' && clientTab === 'booking' && selectedSlot && !successBooking) {
       const buttonText = !termsAccepted 
         ? 'ПРИМИТЕ УСЛОВИЯ ОФЕРТЫ'
         : `ВНЕСТИ ДЕПОЗИТ ${depositAmount} ₽ (СБП)`;
@@ -215,7 +235,7 @@ export default function App() {
     } else {
       mainButton.setParams({ is_visible: false });
     }
-  }, [mainButton, currentRole, selectedSlot, successBooking, depositAmount, isSubmitting, termsAccepted, handleInitiatePayment]);
+  }, [mainButton, currentRole, clientTab, selectedSlot, successBooking, depositAmount, isSubmitting, termsAccepted, handleInitiatePayment]);
 
   const handleSelectSlot = (slot: SlotInfo) => {
     triggerHaptic('selection');
@@ -241,6 +261,11 @@ export default function App() {
         serviceTitle={serviceTitle}
         servicePrice={servicePrice}
         depositAmount={depositAmount}
+        onViewBookings={() => {
+          setSuccessBooking(null);
+          setSelectedSlot(null);
+          setClientTab('my-bookings');
+        }}
         onClose={() => {
           if (tg?.close) {
             tg.close();
@@ -270,7 +295,7 @@ export default function App() {
               }`}
             >
               <UserCheck className="w-3.5 h-3.5 text-blue-600" />
-              <span>Клиент (Запись)</span>
+              <span>Клиент</span>
             </button>
             <button
               onClick={() => {
@@ -294,80 +319,127 @@ export default function App() {
           <MasterDashboard masterTgId={Number(masterId) || 1234567} />
         ) : (
           /* Режим КЛИЕНТА */
-          <>
-            <MasterHeader master={master} isLoading={isLoadingMaster} />
-
-            {errorMessage && (
-              <div className="my-3 p-3 bg-red-50 border border-red-200/80 rounded-2xl flex items-start gap-2.5 text-xs text-red-800 animate-in fade-in">
-                <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
-                <div className="flex-1 font-medium">{errorMessage}</div>
-              </div>
-            )}
-
-            <DateCarousel
-              selectedDate={selectedDate}
-              onSelectDate={handleSelectDate}
-            />
-
-            <TimeSlotGrid
-              slots={slots}
-              selectedSlotId={selectedSlot?.id ?? null}
-              isLoading={isLoadingSlots}
-              onSelectSlot={handleSelectSlot}
-            />
-
-            {selectedSlot && (
-              <div className="animate-in fade-in slide-in-from-bottom-3 duration-200 w-full">
-                <ServiceCard
-                  serviceTitle={serviceTitle}
-                  totalPrice={servicePrice}
-                  depositAmount={depositAmount}
-                  clientPhone={clientPhone}
-                  onChangePhone={setClientPhone}
-                  clientName={clientName}
-                  onChangeName={setClientName}
-                  termsAccepted={termsAccepted}
-                  onToggleTerms={setTermsAccepted}
-                  onOpenOffer={() => setIsOfferOpen(true)}
-                />
-              </div>
-            )}
-
-            {/* Веб-кнопка для клиента */}
-            <div className="mt-4 pt-2 w-full">
-              {selectedSlot ? (
-                <div className="block sm:hidden fixed bottom-0 left-0 right-0 p-3 max-w-md mx-auto bg-white/95 backdrop-blur-md border-t border-zinc-200/80 z-20">
-                  <button
-                    type="button"
-                    disabled={isSubmitting || !termsAccepted}
-                    onClick={handleInitiatePayment}
-                    className="w-full py-3.5 px-4 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-bold rounded-2xl shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2 text-sm transition-all disabled:opacity-50"
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Резервируем слот...
-                      </>
-                    ) : (
-                      <>
-                        <span>ВНЕСТИ ДЕПОЗИТ {depositAmount} ₽ (СБП)</span>
-                        <ArrowRight className="w-4 h-4" />
-                      </>
-                    )}
-                  </button>
-                </div>
-              ) : (
-                <div className="p-3 bg-white border border-zinc-200/60 rounded-2xl flex items-center gap-2.5 text-xs text-zinc-500 w-full shadow-2xs">
-                  <Shield className="w-4 h-4 text-blue-600 flex-shrink-0" />
-                  <span>Выберите удобное время выше для подтверждения брони.</span>
-                </div>
-              )}
-
-              <div className="text-[11px] text-center text-zinc-400 mt-3 pb-1">
-                🛡 Защищено NoShowGuard • ст. 381.1 ГК РФ
+          <div className="space-y-3">
+            {/* Суб-вкладки клиента: Записаться / Мои записи */}
+            <div className="flex justify-center pb-1">
+              <div className="bg-gray-200/70 p-0.5 rounded-2xl flex gap-1 w-full max-w-xs border border-gray-200/60 shadow-2xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('selection');
+                    setClientTab('booking');
+                  }}
+                  className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition ${
+                    clientTab === 'booking'
+                      ? 'bg-white text-gray-900 shadow-xs'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  <CalendarCheck className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Записаться</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('selection');
+                    setClientTab('my-bookings');
+                  }}
+                  className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition ${
+                    clientTab === 'my-bookings'
+                      ? 'bg-white text-gray-900 shadow-xs'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  <Ticket className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Мои записи</span>
+                </button>
               </div>
             </div>
-          </>
+
+            {clientTab === 'my-bookings' ? (
+              <MyBookingsView
+                clientTgId={user.id !== 999999 ? user.id : undefined}
+                clientPhone={clientPhone}
+                onGoToBooking={() => setClientTab('booking')}
+                triggerHaptic={triggerHaptic}
+              />
+            ) : (
+              <>
+                <MasterHeader master={master} isLoading={isLoadingMaster} />
+
+                {errorMessage && (
+                  <div className="my-3 p-3 bg-red-50 border border-red-200/80 rounded-2xl flex items-start gap-2.5 text-xs text-red-800 animate-in fade-in">
+                    <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1 font-medium">{errorMessage}</div>
+                  </div>
+                )}
+
+                <DateCarousel
+                  selectedDate={selectedDate}
+                  onSelectDate={handleSelectDate}
+                />
+
+                <TimeSlotGrid
+                  slots={slots}
+                  selectedSlotId={selectedSlot?.id ?? null}
+                  isLoading={isLoadingSlots}
+                  onSelectSlot={handleSelectSlot}
+                />
+
+                {selectedSlot && (
+                  <div className="animate-in fade-in slide-in-from-bottom-3 duration-200 w-full">
+                    <ServiceCard
+                      serviceTitle={serviceTitle}
+                      totalPrice={servicePrice}
+                      depositAmount={depositAmount}
+                      clientPhone={clientPhone}
+                      onChangePhone={setClientPhone}
+                      clientName={clientName}
+                      onChangeName={setClientName}
+                      termsAccepted={termsAccepted}
+                      onToggleTerms={setTermsAccepted}
+                      onOpenOffer={() => setIsOfferOpen(true)}
+                    />
+                  </div>
+                )}
+
+                {/* Веб-кнопка для клиента */}
+                <div className="mt-4 pt-2 w-full">
+                  {selectedSlot ? (
+                    <div className="block sm:hidden fixed bottom-0 left-0 right-0 p-3 max-w-md mx-auto bg-white/95 backdrop-blur-md border-t border-zinc-200/80 z-20">
+                      <button
+                        type="button"
+                        disabled={isSubmitting || !termsAccepted}
+                        onClick={handleInitiatePayment}
+                        className="w-full py-3.5 px-4 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-bold rounded-2xl shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2 text-sm transition-all disabled:opacity-50"
+                      >
+                        {isSubmitting ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Резервируем слот...
+                          </>
+                        ) : (
+                          <>
+                            <span>ВНЕСТИ ДЕПОЗИТ {depositAmount} ₽ (СБП)</span>
+                            <ArrowRight className="w-4 h-4" />
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-white border border-zinc-200/60 rounded-2xl flex items-center gap-2.5 text-xs text-zinc-500 w-full shadow-2xs">
+                      <Shield className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                      <span>Выберите удобное время выше для подтверждения брони.</span>
+                    </div>
+                  )}
+
+                  <div className="text-[11px] text-center text-zinc-400 mt-3 pb-1">
+                    🛡 Защищено NoShowGuard • ст. 381.1 ГК РФ
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         )}
       </div>
 
